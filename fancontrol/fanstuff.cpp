@@ -29,6 +29,65 @@ constexpr auto TP_ECVALUE_SELFAN1	  = (char)0x0000;
 constexpr auto TP_ECVALUE_SELFAN2	  = (char)0x0001;
 
 //-------------------------------------------------------------------------
+//  Calculate max temperature for a specific set of sensors
+//  sensorList: comma-separated list of sensor names (e.g., "CPU,GPU")
+//  pMaxTempIndex: pointer to store the index of hottest sensor
+//  Returns: maximum temperature found, or 0 if no valid sensors
+//-------------------------------------------------------------------------
+int FANCONTROL::CalculateMaxTempForSensors(const char* sensorList, int* pMaxTempIndex) {
+	char what[16], list[256];
+	int maxtemp = 0;
+	int imaxtemp = 0;
+
+	// If no sensor list specified, return 0
+	if (sensorList == nullptr || sensorList[0] == '\0') {
+		if (pMaxTempIndex) *pMaxTempIndex = 0;
+		return 0;
+	}
+
+	// Build sensor list with pipe separators, e.g., "|CPU|GPU|"
+	sprintf_s(list, sizeof(list), "|%s|", sensorList);
+	for (int i = 0; list[i] != '\0'; i++) {
+		if (list[i] == ',')
+			list[i] = '|';
+	}
+
+	// Scan all sensors
+	for (int i = 0; i < 12; i++) {
+		sprintf_s(what, sizeof(what), "|%s|", this->State.SensorName[i]);
+
+		// Check if this sensor is in our list
+		if (this->State.Sensors[i] != 0x80 && this->State.Sensors[i] != 0x00 && strstr(list, what) != nullptr) {
+			int isens = this->State.Sensors[i];
+			int ioffs = this->SensorOffset[i].offs;
+
+			// Do not apply offset if inside of temp range
+			int calcTemp = isens - SensorOffset[i].offs;
+			if (isens >= SensorOffset[i].hystMin && isens <= SensorOffset[i].hystMax)
+				ioffs = 0;
+
+			int senstemp;
+			if (ShowBiasedTemps)
+				senstemp = isens - ioffs;
+			else
+				senstemp = isens;
+
+			if (senstemp < 128) {
+				if (senstemp > maxtemp) {
+					maxtemp = senstemp;
+					imaxtemp = i;
+				}
+			}
+		}
+	}
+
+	if (pMaxTempIndex)
+		*pMaxTempIndex = imaxtemp;
+
+	return maxtemp;
+}
+
+//-------------------------------------------------------------------------
 //  switch fan according to settings
 //-------------------------------------------------------------------------
 bool FANCONTROL::HandleData(void) {
@@ -83,6 +142,23 @@ bool FANCONTROL::HandleData(void) {
 
 	this->MaxTemp = maxtemp;
 	this->iMaxTemp = imaxtemp;
+
+	// Calculate separate temperatures for independent fan control
+	if (!this->SingleFan && this->IndependentFans) {
+		this->MaxTemp1 = this->CalculateMaxTempForSensors(this->Fan1Sensors, &this->iMaxTemp1);
+		this->MaxTemp2 = this->CalculateMaxTempForSensors(this->Fan2Sensors, &this->iMaxTemp2);
+
+		// If no sensors specified for a fan, fall back to global MaxTemp
+		if (this->MaxTemp1 == 0 && this->Fan1Sensors[0] == '\0')
+			this->MaxTemp1 = this->MaxTemp;
+		if (this->MaxTemp2 == 0 && this->Fan2Sensors[0] == '\0')
+			this->MaxTemp2 = this->MaxTemp;
+	}
+	else {
+		// Non-independent mode: both fans use the same temperature
+		this->MaxTemp1 = this->MaxTemp;
+		this->MaxTemp2 = this->MaxTemp;
+	}
 
 	//
 	// update dialog elements
@@ -223,10 +299,22 @@ bool FANCONTROL::HandleData(void) {
 
 	templist[strlen(templist) - 1] = '\0';
 
-	if (Fahrenheit)
-		sprintf_s(CurrentStatus, sizeof(CurrentStatus), "Fan: 0x%02x / Switch: %d° F (%s)", State.FanCtrl, MaxTemp * 9 / 5 + 32, templist);
-	else
-		sprintf_s(CurrentStatus, sizeof(CurrentStatus), "Fan: 0x%02x / Switch: %d° C (%s)", State.FanCtrl, MaxTemp, templist);
+	if (!this->SingleFan && this->IndependentFans) {
+		// Independent fan mode - show both fan control values
+		if (Fahrenheit)
+			sprintf_s(CurrentStatus, sizeof(CurrentStatus), "Fan1: 0x%02x / Fan2: 0x%02x / Switch: %d° F (%s)", 
+				State.Fan1Ctrl, State.Fan2Ctrl, MaxTemp * 9 / 5 + 32, templist);
+		else
+			sprintf_s(CurrentStatus, sizeof(CurrentStatus), "Fan1: 0x%02x / Fan2: 0x%02x / Switch: %d° C (%s)", 
+				State.Fan1Ctrl, State.Fan2Ctrl, MaxTemp, templist);
+	}
+	else {
+		// Single fan or unified dual fan mode
+		if (Fahrenheit)
+			sprintf_s(CurrentStatus, sizeof(CurrentStatus), "Fan: 0x%02x / Switch: %d° F (%s)", State.FanCtrl, MaxTemp * 9 / 5 + 32, templist);
+		else
+			sprintf_s(CurrentStatus, sizeof(CurrentStatus), "Fan: 0x%02x / Switch: %d° C (%s)", State.FanCtrl, MaxTemp, templist);
+	}
 
 	// display fan speed
 
@@ -236,7 +324,14 @@ bool FANCONTROL::HandleData(void) {
 		fan2speed = lastfan2speed;
 	sprintf_s(obuf2, sizeof(obuf2), "%d/%d", this->fan1speed, this->fan2speed);
 
-	sprintf_s(CurrentStatuscsv, sizeof(CurrentStatuscsv), "%s %s; %d; %d; ", templist, obuf2, State.FanCtrl, MaxTemp);
+	if (!this->SingleFan && this->IndependentFans) {
+		sprintf_s(CurrentStatuscsv, sizeof(CurrentStatuscsv), "%s %s; %d; %d; %d; %d; ", 
+			templist, obuf2, State.Fan1Ctrl, State.Fan2Ctrl, MaxTemp1, MaxTemp2);
+	}
+	else {
+		sprintf_s(CurrentStatuscsv, sizeof(CurrentStatuscsv), "%s %s; %d; %d; ", 
+			templist, obuf2, State.FanCtrl, MaxTemp);
+	}
 
 	::SetDlgItemText(this->hwndDialog, 8112, this->CurrentStatus);
 
@@ -270,8 +365,12 @@ bool FANCONTROL::HandleData(void) {
 			this->Trace(obuf);
 		}
 
-		if (this->State.FanCtrl != 0x080)
-			ok = this->SetFan("BIOS", 0x80);
+		if (this->State.FanCtrl != 0x080) {
+			if (!this->SingleFan && this->IndependentFans)
+				ok = this->SetFan("BIOS", 0x80, 0x80, false);
+			else
+				ok = this->SetFan("BIOS", 0x80);
+		}
 		break;
 
 	case 2: // Smart
@@ -304,21 +403,77 @@ bool FANCONTROL::HandleData(void) {
 			else
 				::GetWindowTextA(::GetDlgItem(this->hwndDialog, 8310), manlevel, sizeof(manlevel));
 
-		int speedVal;
+		// Check if we're using independent fan control
+		if (!this->SingleFan && this->IndependentFans) {
+			// Parse input as "fan1,fan2" or "fan1/fan2" format
+			char* delimiter = strchr(manlevel, ',');
+			if (!delimiter) delimiter = strchr(manlevel, '/');
 
-		if (manlevel[0] == 'x' && manlevel[1] == '\'') {
-			speedVal = strtol(manlevel + 2, NULL, 16);
-		} else if (manlevel[0] == '0' && (manlevel[1] == 'x' || manlevel[1] == 'X')) {
-			speedVal = strtol(manlevel, NULL, 16);
-		} else {
-			speedVal = strtol(manlevel, NULL, 0);
+			if (delimiter) {
+				// Two values provided
+				*delimiter = '\0'; // Split the string
+				char* fan1str = manlevel;
+				char* fan2str = delimiter + 1;
+
+				int speedVal1, speedVal2;
+
+				// Parse fan1 value
+				if (fan1str[0] == 'x' && fan1str[1] == '\'') {
+					speedVal1 = strtol(fan1str + 2, NULL, 16);
+				} else if (fan1str[0] == '0' && (fan1str[1] == 'x' || fan1str[1] == 'X')) {
+					speedVal1 = strtol(fan1str, NULL, 16);
+				} else {
+					speedVal1 = strtol(fan1str, NULL, 0);
+				}
+
+				// Parse fan2 value
+				if (fan2str[0] == 'x' && fan2str[1] == '\'') {
+					speedVal2 = strtol(fan2str + 2, NULL, 16);
+				} else if (fan2str[0] == '0' && (fan2str[1] == 'x' || fan2str[1] == 'X')) {
+					speedVal2 = strtol(fan2str, NULL, 16);
+				} else {
+					speedVal2 = strtol(fan2str, NULL, 0);
+				}
+
+				if (speedVal1 >= 0 && speedVal1 <= 255 && speedVal2 >= 0 && speedVal2 <= 255) {
+					ok = this->SetFan("Manual", speedVal1, speedVal2, false);
+				}
+			}
+			else {
+				// Single value provided - use for both fans
+				int speedVal;
+
+				if (manlevel[0] == 'x' && manlevel[1] == '\'') {
+					speedVal = strtol(manlevel + 2, NULL, 16);
+				} else if (manlevel[0] == '0' && (manlevel[1] == 'x' || manlevel[1] == 'X')) {
+					speedVal = strtol(manlevel, NULL, 16);
+				} else {
+					speedVal = strtol(manlevel, NULL, 0);
+				}
+
+				if (speedVal >= 0 && speedVal <= 255) {
+					ok = this->SetFan("Manual", speedVal, speedVal, false);
+				}
+			}
 		}
+		else {
+			// Original single fan or unified dual fan control
+			int speedVal;
 
-		if (speedVal >= 0 && speedVal <= 255) {
-			if (this->State.FanCtrl != speedVal)
-				ok = this->SetFan("Manual", speedVal);
-			else
-				ok = true;
+			if (manlevel[0] == 'x' && manlevel[1] == '\'') {
+				speedVal = strtol(manlevel + 2, NULL, 16);
+			} else if (manlevel[0] == '0' && (manlevel[1] == 'x' || manlevel[1] == 'X')) {
+				speedVal = strtol(manlevel, NULL, 16);
+			} else {
+				speedVal = strtol(manlevel, NULL, 0);
+			}
+
+			if (speedVal >= 0 && speedVal <= 255) {
+				if (this->State.FanCtrl != speedVal)
+					ok = this->SetFan("Manual", speedVal);
+				else
+					ok = true;
+			}
 		}
 
 		break;
@@ -360,33 +515,88 @@ void FANCONTROL::SmartControl(void) {
 	//5 Level = 95   64  0   0 
 	//6 Level = 105 128  0   0 
 
-	if ((fanctrl > 7 && (fanctrl != 64 || !Lev64Norm)) || this->PreviousMode == 3 || this->PreviousMode == 1) {
-		fanctrl = 0;
-		levelIndex = 0;
-		newfanctrl = 0;
-	}
+	// Check if we're using independent fan control
+	if (!this->SingleFan && this->IndependentFans) {
+		// Independent fan control: calculate separate speeds for each fan
+		int newfanctrl1 = -1, newfanctrl2 = -1;
+		int fanctrl1 = fanctrl, fanctrl2 = fanctrl;
 
-	// Check for fan speed ramp upwards
-	for (i = 0; this->SmartLevels[i].temp != -1; i++) {
-		if (this->MaxTemp >= this->SmartLevels[i].temp + this->SmartLevels[i].hystUp && this->SmartLevels[i].fan >= fanctrl) {
-			newfanctrl = this->SmartLevels[i].fan;
-			levelIndex = i;
+		if ((fanctrl > 7 && (fanctrl != 64 || !Lev64Norm)) || this->PreviousMode == 3 || this->PreviousMode == 1) {
+			fanctrl1 = 0;
+			fanctrl2 = 0;
+			newfanctrl1 = 0;
+			newfanctrl2 = 0;
 		}
-	}
 
-	// Check for fan speed ramp downwards
-	if (newfanctrl == -1) {
-		for (i = 0; this->SmartLevels[i].temp != -1; i++) {
-			if (this->MaxTemp <= this->SmartLevels[i].temp - this->SmartLevels[i].hystDown && this->SmartLevels[i].fan < fanctrl) {
-				newfanctrl = this->SmartLevels[i].fan;
-				levelIndex = i;
-				break;
+		// Calculate Fan1 speed using SmartLevels1 and MaxTemp1
+		for (i = 0; this->SmartLevels1[i].temp1 != -1; i++) {
+			if (this->MaxTemp1 >= this->SmartLevels1[i].temp1 + this->SmartLevels1[i].hystUp1 && this->SmartLevels1[i].fan1 >= fanctrl1) {
+				newfanctrl1 = this->SmartLevels1[i].fan1;
 			}
 		}
-	}
+		if (newfanctrl1 == -1) {
+			for (i = 0; this->SmartLevels1[i].temp1 != -1; i++) {
+				if (this->MaxTemp1 <= this->SmartLevels1[i].temp1 - this->SmartLevels1[i].hystDown1 && this->SmartLevels1[i].fan1 < fanctrl1) {
+					newfanctrl1 = this->SmartLevels1[i].fan1;
+					break;
+				}
+			}
+		}
 
-	if (newfanctrl != -1 && newfanctrl != this->State.FanCtrl) {
-		this->SetFan("Smart", newfanctrl);
+		// Calculate Fan2 speed using SmartLevels2 and MaxTemp2
+		for (i = 0; this->SmartLevels2[i].temp2 != -1; i++) {
+			if (this->MaxTemp2 >= this->SmartLevels2[i].temp2 + this->SmartLevels2[i].hystUp2 && this->SmartLevels2[i].fan2 >= fanctrl2) {
+				newfanctrl2 = this->SmartLevels2[i].fan2;
+			}
+		}
+		if (newfanctrl2 == -1) {
+			for (i = 0; this->SmartLevels2[i].temp2 != -1; i++) {
+				if (this->MaxTemp2 <= this->SmartLevels2[i].temp2 - this->SmartLevels2[i].hystDown2 && this->SmartLevels2[i].fan2 < fanctrl2) {
+					newfanctrl2 = this->SmartLevels2[i].fan2;
+					break;
+				}
+			}
+		}
+
+		// Set fans independently if speeds have changed
+		if ((newfanctrl1 != -1 && newfanctrl1 != this->State.FanCtrl) || 
+			(newfanctrl2 != -1 && newfanctrl2 != this->State.FanCtrl)) {
+			// Use newfanctrl1 for fan1, newfanctrl2 for fan2
+			if (newfanctrl1 == -1) newfanctrl1 = fanctrl1;
+			if (newfanctrl2 == -1) newfanctrl2 = fanctrl2;
+			this->SetFan("Smart", newfanctrl1, newfanctrl2, false);
+		}
+	}
+	else {
+		// Original single/unified fan control logic
+		if ((fanctrl > 7 && (fanctrl != 64 || !Lev64Norm)) || this->PreviousMode == 3 || this->PreviousMode == 1) {
+			fanctrl = 0;
+			levelIndex = 0;
+			newfanctrl = 0;
+		}
+
+		// Check for fan speed ramp upwards
+		for (i = 0; this->SmartLevels[i].temp != -1; i++) {
+			if (this->MaxTemp >= this->SmartLevels[i].temp + this->SmartLevels[i].hystUp && this->SmartLevels[i].fan >= fanctrl) {
+				newfanctrl = this->SmartLevels[i].fan;
+				levelIndex = i;
+			}
+		}
+
+		// Check for fan speed ramp downwards
+		if (newfanctrl == -1) {
+			for (i = 0; this->SmartLevels[i].temp != -1; i++) {
+				if (this->MaxTemp <= this->SmartLevels[i].temp - this->SmartLevels[i].hystDown && this->SmartLevels[i].fan < fanctrl) {
+					newfanctrl = this->SmartLevels[i].fan;
+					levelIndex = i;
+					break;
+				}
+			}
+		}
+
+		if (newfanctrl != -1 && newfanctrl != this->State.FanCtrl) {
+			this->SetFan("Smart", newfanctrl);
+		}
 	}
 
 	return;
@@ -448,6 +658,83 @@ bool FANCONTROL::SetFan(const char* source, int fanctrl, bool final) {
 		this->FreeECAccess();
 
 		if (this->State.FanCtrl == fanctrl) {
+			p += sprintf_s(p, sizeof(obuf) - (p - obuf), "OK");
+			ok = true;
+			if (final)
+				this->FinalSeen = true;
+		}
+		else {
+			p += sprintf_s(p, sizeof(obuf) - (p - obuf), "FAILED!!");
+			ok = false;
+		}
+	}
+	else {
+		p += sprintf_s(p, sizeof(obuf) - (p - obuf), "IGNORED!(passive mode)");
+	}
+
+	sprintf_s(obuf2, sizeof(obuf2), "%s   (%s)", obuf, datebuf);
+	::SetDlgItemText(this->hwndDialog, 8113, obuf2);
+
+	this->Trace(this->CurrentStatus);
+	this->Trace(obuf);
+
+	if (!final)
+		::PostMessage(this->hwndDialog, WM__GETDATA, 0, 0);
+
+	return ok;
+}
+
+//-------------------------------------------------------------------------
+//  set fan state via EC - independent fan control version
+//-------------------------------------------------------------------------
+bool FANCONTROL::SetFan(const char* source, int fan1ctrl, int fan2ctrl, bool final) {
+	char obuf[256] = "",
+		 obuf2[256],
+		 datebuf[128];
+	int ok = 0, fan1_ok = 0, fan2_ok = 0;
+	char* p = obuf;
+	char readback1, readback2;
+
+	if (this->FanBeepFreq && this->FanBeepDura)
+		::Beep(this->FanBeepFreq, this->FanBeepDura);
+
+	this->CurrentDateTimeLocalized(datebuf, sizeof(datebuf));
+
+	p += sprintf_s(p, sizeof(obuf) - (p - obuf), "%s: Set fan1=0x%02x fan2=0x%02x, ", source, fan1ctrl, fan2ctrl);
+	p += sprintf_s(p, sizeof(obuf) - (p - obuf), "Result: ");
+
+	if (this->ActiveMode && !this->FinalSeen) {
+		if (!this->LockECAccess()) return false;
+
+		for (int i = 0; i < 5; i++) {
+			// set new fan1 level
+			ok = this->WriteByteToEC(TP_ECOFFSET_FAN_SWITCH, TP_ECVALUE_SELFAN1);
+			ok = this->WriteByteToEC(TP_ECOFFSET_FAN, fan1ctrl);
+			::Sleep(100);
+			// verify completion of fan1
+			fan1_ok = this->ReadByteFromEC(TP_ECOFFSET_FAN, &readback1);
+			::Sleep(100);
+
+			// set new fan2 level
+			ok = this->WriteByteToEC(TP_ECOFFSET_FAN_SWITCH, TP_ECVALUE_SELFAN2);
+			ok = this->WriteByteToEC(TP_ECOFFSET_FAN, fan2ctrl);
+			::Sleep(100);
+			// verify completion of fan2
+			fan2_ok = this->ReadByteFromEC(TP_ECOFFSET_FAN, &readback2);
+			::Sleep(100);
+
+			if (fan1_ok && fan2_ok && readback1 == fan1ctrl && readback2 == fan2ctrl) {
+				p += sprintf_s(p, sizeof(obuf) - (p - obuf), "[i=%d] ", i);
+				this->State.FanCtrl = fan1ctrl; // Store fan1 value as primary for compatibility
+				break;
+			}
+
+			::Sleep(250);
+		}
+
+		this->FreeECAccess();
+
+		if (fan1_ok && fan2_ok) {
 			p += sprintf_s(p, sizeof(obuf) - (p - obuf), "OK");
 			ok = true;
 			if (final)
@@ -651,6 +938,17 @@ bool FANCONTROL::ReadEcRaw(FCSTATE* pfcstate) {
 		return false;
 	}
 
+	// Read Fan1 control value if in independent mode
+	if (!SingleFan && IndependentFans) {
+		if (!ReadByteFromEC(TP_ECOFFSET_FAN, &pfcstate->Fan1Ctrl)) {
+			this->Trace("failed to read Fan1Ctrl from EC");
+			return false;
+		}
+	}
+	else {
+		pfcstate->Fan1Ctrl = pfcstate->FanCtrl;
+	}
+
 	if (!SingleFan) {
 		//
 		// Fan 2 last
@@ -671,10 +969,22 @@ bool FANCONTROL::ReadEcRaw(FCSTATE* pfcstate) {
 			this->Trace("failed to read FanSpeedHighByte 2 from EC");
 			return false;
 		}
+
+		// Read Fan2 control value if in independent mode
+		if (IndependentFans) {
+			if (!ReadByteFromEC(TP_ECOFFSET_FAN, &pfcstate->Fan2Ctrl)) {
+				this->Trace("failed to read Fan2Ctrl from EC");
+				return false;
+			}
+		}
+		else {
+			pfcstate->Fan2Ctrl = pfcstate->FanCtrl;
+		}
 	}
 	else {
 		pfcstate->Fan2SpeedLo = pfcstate->Fan1SpeedLo;
 		pfcstate->Fan2SpeedHi = pfcstate->Fan1SpeedHi;
+		pfcstate->Fan2Ctrl = pfcstate->FanCtrl;
 	}
 
 	// Get Sensors finally

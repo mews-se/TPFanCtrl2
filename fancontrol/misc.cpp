@@ -47,6 +47,13 @@ FANCONTROL::ReadConfig(const char* configfile)
 	this->fan2speed = 0;
 
 	this->IndSmartLevel = 0;
+	this->IndependentFans = 0;
+	this->MaxTemp1 = 0;
+	this->MaxTemp2 = 0;
+	this->iMaxTemp1 = 0;
+	this->iMaxTemp2 = 0;
+	strcpy_s(this->Fan1Sensors, sizeof(this->Fan1Sensors), "");
+	strcpy_s(this->Fan2Sensors, sizeof(this->Fan2Sensors), "");
 
 	//
 	// read from file
@@ -293,6 +300,31 @@ FANCONTROL::ReadConfig(const char* configfile)
 
 			if (_strnicmp(buf, "SingleFan=", 10) == 0) {
 				this->SingleFan = atoi(buf + 10);
+				continue;
+			}
+
+			if (_strnicmp(buf, "IndependentFans=", 16) == 0) {
+				this->IndependentFans = atoi(buf + 16);
+				continue;
+			}
+
+			if (_strnicmp(buf, "Fan1Sensors=", 12) == 0) {
+				strncpy_s(this->Fan1Sensors, sizeof(this->Fan1Sensors), buf + 12, _TRUNCATE);
+				// Remove trailing newline/whitespace
+				size_t len = strlen(this->Fan1Sensors);
+				while (len > 0 && (this->Fan1Sensors[len - 1] == '\n' || this->Fan1Sensors[len - 1] == '\r' || this->Fan1Sensors[len - 1] == ' ')) {
+					this->Fan1Sensors[--len] = '\0';
+				}
+				continue;
+			}
+
+			if (_strnicmp(buf, "Fan2Sensors=", 12) == 0) {
+				strncpy_s(this->Fan2Sensors, sizeof(this->Fan2Sensors), buf + 12, _TRUNCATE);
+				// Remove trailing newline/whitespace
+				size_t len = strlen(this->Fan2Sensors);
+				while (len > 0 && (this->Fan2Sensors[len - 1] == '\n' || this->Fan2Sensors[len - 1] == '\r' || this->Fan2Sensors[len - 1] == ' ')) {
+					this->Fan2Sensors[--len] = '\0';
+				}
 				continue;
 			}
 

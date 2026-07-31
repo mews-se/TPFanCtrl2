@@ -57,6 +57,8 @@ protected:
 	struct FCSTATE {
 
 		char FanCtrl,
+			Fan1Ctrl,
+			Fan2Ctrl,
 			Fan1SpeedLo,
 			Fan1SpeedHi,
 			Fan2SpeedLo,
@@ -103,6 +105,7 @@ protected:
 	int FanSpeedLowByte;
 	int ActiveMode;
 	int SingleFan;
+	int IndependentFans;
 	int PowerSuspendMode;
 	int ModernS0Mode;
 	int UseTWR,
@@ -113,6 +116,10 @@ protected:
 	int TaskbarNew;
 	int MaxTemp;
 	int iMaxTemp;
+	int MaxTemp1;
+	int iMaxTemp1;
+	int MaxTemp2;
+	int iMaxTemp2;
 	int fan1speed, lastfan1speed, fan2speed, lastfan2speed;
 	int FanBeepFreq, FanBeepDura;
 	int MinimizeToSysTray,
@@ -158,6 +165,8 @@ protected:
 	int ShowAll;
 	int ShowTempIcon;
 	char IgnoreSensors[256];
+	char Fan1Sensors[256];
+	char Fan2Sensors[256];
 	char MenuLabelSM1[32];
 	char MenuLabelSM2[32];
 	HANDLE hThread;
@@ -225,7 +234,10 @@ protected:
 
 	void SmartControl();
 
+	int CalculateMaxTempForSensors(const char* sensorList, int* pMaxTempIndex);
+
 	bool SetFan(const char* source, int level, bool final = false);
+	bool SetFan(const char* source, int fan1level, int fan2level, bool final);
 
 	bool SetHdw(const char* source, int hdwctrl, int HdwOffset, int AnyWayBit);
 

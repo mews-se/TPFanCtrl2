@@ -193,8 +193,11 @@ void FANCONTROL::InitDialogWindow() {
 	strcat_s(this->Title, sizeof(this->Title), " V");
 	if (SingleFan)
 		strcat_s(this->Title, sizeof(this->Title), FANCONTROLVERSIONS);
-	else
+	else {
 		strcat_s(this->Title, sizeof(this->Title), FANCONTROLVERSIOND);
+		if (IndependentFans)
+			strcat_s(this->Title, sizeof(this->Title), " Independent");
+	}
 
 	::SetWindowText(this->hwndDialog, this->Title);
 
