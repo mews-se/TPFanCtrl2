@@ -436,7 +436,10 @@ bool FANCONTROL::HandleData(void) {
 				}
 
 				if (speedVal1 >= 0 && speedVal1 <= 255 && speedVal2 >= 0 && speedVal2 <= 255) {
-					ok = this->SetFan("Manual", speedVal1, speedVal2, false);
+					if (this->State.Fan1Ctrl != speedVal1 || this->State.Fan2Ctrl != speedVal2)
+						ok = this->SetFan("Manual", speedVal1, speedVal2, false);
+					else
+						ok = true;
 				}
 			}
 			else {
@@ -452,7 +455,10 @@ bool FANCONTROL::HandleData(void) {
 				}
 
 				if (speedVal >= 0 && speedVal <= 255) {
-					ok = this->SetFan("Manual", speedVal, speedVal, false);
+					if (this->State.Fan1Ctrl != speedVal || this->State.Fan2Ctrl != speedVal)
+						ok = this->SetFan("Manual", speedVal, speedVal, false);
+					else
+						ok = true;
 				}
 			}
 		}
