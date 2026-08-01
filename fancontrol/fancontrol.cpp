@@ -241,6 +241,26 @@ void FANCONTROL::InitDialogWindow() {
 			}
 		}
 
+		// Init second manual mode ComboBox for independent fan control (8311)
+		{
+			HWND hCB2 = ::GetDlgItem(this->hwndDialog, 8311);
+			if (hCB2) {
+				SendMessageA(hCB2, CB_ADDSTRING, 0, (LPARAM)"0");
+				SendMessageA(hCB2, CB_ADDSTRING, 0, (LPARAM)"1");
+				SendMessageA(hCB2, CB_ADDSTRING, 0, (LPARAM)"2");
+				SendMessageA(hCB2, CB_ADDSTRING, 0, (LPARAM)"3");
+				SendMessageA(hCB2, CB_ADDSTRING, 0, (LPARAM)"4");
+				SendMessageA(hCB2, CB_ADDSTRING, 0, (LPARAM)"5");
+				SendMessageA(hCB2, CB_ADDSTRING, 0, (LPARAM)"6");
+				SendMessageA(hCB2, CB_ADDSTRING, 0, (LPARAM)"7");
+				SendMessageA(hCB2, CB_ADDSTRING, 0, (LPARAM)"0x40 (max)");
+				SendMessageA(hCB2, CB_ADDSTRING, 0, (LPARAM)"0x80 (BIOS)");
+				char mbuf[16];
+				_itoa_s(this->ManFanSpeed, mbuf, 10);
+				SetWindowTextA(hCB2, mbuf);
+			}
+		}
+
 	if (SlimDialog == 1) {
 		// Fix: destroy the old dialog before replacing
 		if (this->hwndDialog)
@@ -373,6 +393,15 @@ void FANCONTROL::SetupTaskbarAndTimers() {
 	::EnableWindow(::GetDlgItem(this->hwndDialog, 8301), this->ActiveMode);
 	::EnableWindow(::GetDlgItem(this->hwndDialog, 8302), this->ActiveMode);
 	::EnableWindow(::GetDlgItem(this->hwndDialog, 8310), this->ActiveMode);
+
+	// enable/disable second fan speed ComboBox (only when SingleFan=0 and IndependentFans=1)
+	if (!this->SingleFan && this->IndependentFans) {
+		::EnableWindow(::GetDlgItem(this->hwndDialog, 8311), this->ActiveMode);
+		::ShowWindow(::GetDlgItem(this->hwndDialog, 8311), SW_SHOW);
+	} else {
+		::EnableWindow(::GetDlgItem(this->hwndDialog, 8311), FALSE);
+		::ShowWindow(::GetDlgItem(this->hwndDialog, 8311), SW_HIDE);
+	}
 
 	// make it call HandleControl initially
 	::PostMessage(this->hwndDialog, WM__GETDATA, 0, 0);
@@ -950,8 +979,8 @@ ULONG FANCONTROL::OnCommand(WPARAM mp1) {
 		this->UpdateTempDisplay();
 	}
 
-	if (cmd >= 8300 && cmd <= 8302 || cmd == 8310) {  // radio button or manual speed entry
-		if (cmd == 8310) {  // auto-switch to Manual when user interacts with speed ComboBox
+	if (cmd >= 8300 && cmd <= 8302 || cmd == 8310 || cmd == 8311) {  // radio button or manual speed entry
+		if (cmd == 8310 || cmd == 8311) {  // auto-switch to Manual when user interacts with speed ComboBox
 			if (HIWORD(mp1) == CBN_EDITCHANGE)  // ignore per-keystroke, only act on CBN_SELCHANGE
 				return 0;
 			this->ModeToDialog(3);

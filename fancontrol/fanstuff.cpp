@@ -405,61 +405,52 @@ bool FANCONTROL::HandleData(void) {
 
 		// Check if we're using independent fan control
 		if (!this->SingleFan && this->IndependentFans) {
-			// Parse input as "fan1,fan2" or "fan1/fan2" format
-			char* delimiter = strchr(manlevel, ',');
-			if (!delimiter) delimiter = strchr(manlevel, '/');
+			// Read from separate ComboBoxes for fan1 and fan2
+			char fan2level[32] = "";
 
-			if (delimiter) {
-				// Two values provided
-				*delimiter = '\0'; // Split the string
-				char* fan1str = manlevel;
-				char* fan2str = delimiter + 1;
+			if (SlimDialog) {
+				// For slim dialog, use comma-separated format from single ComboBox
+				char* delimiter = strchr(manlevel, ',');
+				if (!delimiter) delimiter = strchr(manlevel, '/');
 
-				int speedVal1, speedVal2;
-
-				// Parse fan1 value
-				if (fan1str[0] == 'x' && fan1str[1] == '\'') {
-					speedVal1 = strtol(fan1str + 2, NULL, 16);
-				} else if (fan1str[0] == '0' && (fan1str[1] == 'x' || fan1str[1] == 'X')) {
-					speedVal1 = strtol(fan1str, NULL, 16);
+				if (delimiter) {
+					// Two values provided in single ComboBox
+					*delimiter = '\0';
+					strcpy_s(fan2level, sizeof(fan2level), delimiter + 1);
 				} else {
-					speedVal1 = strtol(fan1str, NULL, 0);
+					// Single value - use for both fans
+					strcpy_s(fan2level, sizeof(fan2level), manlevel);
 				}
-
-				// Parse fan2 value
-				if (fan2str[0] == 'x' && fan2str[1] == '\'') {
-					speedVal2 = strtol(fan2str + 2, NULL, 16);
-				} else if (fan2str[0] == '0' && (fan2str[1] == 'x' || fan2str[1] == 'X')) {
-					speedVal2 = strtol(fan2str, NULL, 16);
-				} else {
-					speedVal2 = strtol(fan2str, NULL, 0);
-				}
-
-				if (speedVal1 >= 0 && speedVal1 <= 255 && speedVal2 >= 0 && speedVal2 <= 255) {
-					if (this->State.Fan1Ctrl != speedVal1 || this->State.Fan2Ctrl != speedVal2)
-						ok = this->SetFan("Manual", speedVal1, speedVal2, false);
-					else
-						ok = true;
-				}
+			} else {
+				// For normal dialog, read from second ComboBox (8311)
+				::GetWindowTextA(::GetDlgItem(this->hwndDialog, 8311), fan2level, sizeof(fan2level));
 			}
-			else {
-				// Single value provided - use for both fans
-				int speedVal;
 
-				if (manlevel[0] == 'x' && manlevel[1] == '\'') {
-					speedVal = strtol(manlevel + 2, NULL, 16);
-				} else if (manlevel[0] == '0' && (manlevel[1] == 'x' || manlevel[1] == 'X')) {
-					speedVal = strtol(manlevel, NULL, 16);
-				} else {
-					speedVal = strtol(manlevel, NULL, 0);
-				}
+			int speedVal1, speedVal2;
 
-				if (speedVal >= 0 && speedVal <= 255) {
-					if (this->State.Fan1Ctrl != speedVal || this->State.Fan2Ctrl != speedVal)
-						ok = this->SetFan("Manual", speedVal, speedVal, false);
-					else
-						ok = true;
-				}
+			// Parse fan1 value
+			if (manlevel[0] == 'x' && manlevel[1] == '\'') {
+				speedVal1 = strtol(manlevel + 2, NULL, 16);
+			} else if (manlevel[0] == '0' && (manlevel[1] == 'x' || manlevel[1] == 'X')) {
+				speedVal1 = strtol(manlevel, NULL, 16);
+			} else {
+				speedVal1 = strtol(manlevel, NULL, 0);
+			}
+
+			// Parse fan2 value
+			if (fan2level[0] == 'x' && fan2level[1] == '\'') {
+				speedVal2 = strtol(fan2level + 2, NULL, 16);
+			} else if (fan2level[0] == '0' && (fan2level[1] == 'x' || fan2level[1] == 'X')) {
+				speedVal2 = strtol(fan2level, NULL, 16);
+			} else {
+				speedVal2 = strtol(fan2level, NULL, 0);
+			}
+
+			if (speedVal1 >= 0 && speedVal1 <= 255 && speedVal2 >= 0 && speedVal2 <= 255) {
+				if (this->State.Fan1Ctrl != speedVal1 || this->State.Fan2Ctrl != speedVal2)
+					ok = this->SetFan("Manual", speedVal1, speedVal2, false);
+				else
+					ok = true;
 			}
 		}
 		else {
@@ -525,12 +516,15 @@ void FANCONTROL::SmartControl(void) {
 	if (!this->SingleFan && this->IndependentFans) {
 		// Independent fan control: calculate separate speeds for each fan
 		int newfanctrl1 = -1, newfanctrl2 = -1;
-		int fanctrl1 = fanctrl, fanctrl2 = fanctrl;
+		int fanctrl1 = this->State.Fan1Ctrl, fanctrl2 = this->State.Fan2Ctrl;
 
-		if ((fanctrl > 7 && (fanctrl != 64 || !Lev64Norm)) || this->PreviousMode == 3 || this->PreviousMode == 1) {
+		if ((fanctrl1 > 7 && (fanctrl1 != 64 || !Lev64Norm)) || this->PreviousMode == 3 || this->PreviousMode == 1) {
 			fanctrl1 = 0;
-			fanctrl2 = 0;
 			newfanctrl1 = 0;
+		}
+
+		if ((fanctrl2 > 7 && (fanctrl2 != 64 || !Lev64Norm)) || this->PreviousMode == 3 || this->PreviousMode == 1) {
+			fanctrl2 = 0;
 			newfanctrl2 = 0;
 		}
 
@@ -565,8 +559,8 @@ void FANCONTROL::SmartControl(void) {
 		}
 
 		// Set fans independently if speeds have changed
-		if ((newfanctrl1 != -1 && newfanctrl1 != this->State.FanCtrl) || 
-			(newfanctrl2 != -1 && newfanctrl2 != this->State.FanCtrl)) {
+		if ((newfanctrl1 != -1 && newfanctrl1 != this->State.Fan1Ctrl) || 
+			(newfanctrl2 != -1 && newfanctrl2 != this->State.Fan2Ctrl)) {
 			// Use newfanctrl1 for fan1, newfanctrl2 for fan2
 			if (newfanctrl1 == -1) newfanctrl1 = fanctrl1;
 			if (newfanctrl2 == -1) newfanctrl2 = fanctrl2;
@@ -666,6 +660,10 @@ bool FANCONTROL::SetFan(const char* source, int fanctrl, bool final) {
 		if (this->State.FanCtrl == fanctrl) {
 			p += sprintf_s(p, sizeof(obuf) - (p - obuf), "OK");
 			ok = true;
+			// Update individual fan control values for consistency
+			this->State.Fan1Ctrl = fanctrl;
+			if (!SingleFan)
+				this->State.Fan2Ctrl = fanctrl;
 			if (final)
 				this->FinalSeen = true;
 		}
@@ -731,6 +729,8 @@ bool FANCONTROL::SetFan(const char* source, int fan1ctrl, int fan2ctrl, bool fin
 
 			if (fan1_ok && fan2_ok && readback1 == fan1ctrl && readback2 == fan2ctrl) {
 				p += sprintf_s(p, sizeof(obuf) - (p - obuf), "[i=%d] ", i);
+				this->State.Fan1Ctrl = fan1ctrl;
+				this->State.Fan2Ctrl = fan2ctrl;
 				this->State.FanCtrl = fan1ctrl; // Store fan1 value as primary for compatibility
 				break;
 			}
@@ -890,7 +890,19 @@ bool FANCONTROL::ReadEcStatus(FCSTATE* pfcstate) {
 		const bool okSample2 = this->ReadEcRaw(&sample2);
 
 		if (okSample1 && okSample2 && this->SampleMatch(&sample1, &sample2)) {
+			// Preserve Fan1Ctrl and Fan2Ctrl if in independent fan mode
+			// because these are maintained as software state only
+			char savedFan1Ctrl = pfcstate->Fan1Ctrl;
+			char savedFan2Ctrl = pfcstate->Fan2Ctrl;
+
 			memcpy(pfcstate, &sample2, sizeof(*pfcstate));
+
+			// Restore preserved values if in independent mode
+			if (!this->SingleFan && this->IndependentFans) {
+				pfcstate->Fan1Ctrl = savedFan1Ctrl;
+				pfcstate->Fan2Ctrl = savedFan2Ctrl;
+			}
+
 			this->FreeECAccess();
 			return TRUE;
 		}
@@ -945,11 +957,25 @@ bool FANCONTROL::ReadEcRaw(FCSTATE* pfcstate) {
 	}
 
 	// Read Fan1 control value if in independent mode
+	// Note: In independent mode, we don't read from EC because
+	// the EC doesn't reliably store/return separate values for each fan.
+	// We maintain Fan1Ctrl and Fan2Ctrl as software state only.
 	if (!SingleFan && IndependentFans) {
-		if (!ReadByteFromEC(TP_ECOFFSET_FAN, &pfcstate->Fan1Ctrl)) {
-			this->Trace("failed to read Fan1Ctrl from EC");
-			return false;
+		// Initialize Fan1Ctrl from a read if it's zero (first time only)
+		if (pfcstate->Fan1Ctrl == 0) {
+			// Read the actual fan1 control value from EC
+			if (!WriteByteToEC(TP_ECOFFSET_FAN_SWITCH, TP_ECVALUE_SELFAN1)) {
+				this->Trace("failed to select Fan 1 in EC for init");
+				return false;
+			}
+			char tempFan1Ctrl = 0;
+			if (!ReadByteFromEC(TP_ECOFFSET_FAN, &tempFan1Ctrl)) {
+				this->Trace("failed to read Fan1Ctrl from EC for init");
+				return false;
+			}
+			pfcstate->Fan1Ctrl = tempFan1Ctrl;
 		}
+		// Otherwise preserve Fan1Ctrl value (don't read from EC)
 	}
 	else {
 		pfcstate->Fan1Ctrl = pfcstate->FanCtrl;
@@ -977,11 +1003,21 @@ bool FANCONTROL::ReadEcRaw(FCSTATE* pfcstate) {
 		}
 
 		// Read Fan2 control value if in independent mode
+		// Note: In independent mode, we don't read from EC because
+		// the EC doesn't reliably store/return separate values for each fan.
+		// We maintain Fan1Ctrl and Fan2Ctrl as software state only.
 		if (IndependentFans) {
-			if (!ReadByteFromEC(TP_ECOFFSET_FAN, &pfcstate->Fan2Ctrl)) {
-				this->Trace("failed to read Fan2Ctrl from EC");
-				return false;
+			// Initialize Fan2Ctrl from a read if it's zero (first time only)
+			// Note: Fan2 is already selected from the code above
+			if (pfcstate->Fan2Ctrl == 0) {
+				char tempFan2Ctrl = 0;
+				if (!ReadByteFromEC(TP_ECOFFSET_FAN, &tempFan2Ctrl)) {
+					this->Trace("failed to read Fan2Ctrl from EC for init");
+					return false;
+				}
+				pfcstate->Fan2Ctrl = tempFan2Ctrl;
 			}
+			// Otherwise preserve Fan2Ctrl value (don't read from EC)
 		}
 		else {
 			pfcstate->Fan2Ctrl = pfcstate->FanCtrl;
