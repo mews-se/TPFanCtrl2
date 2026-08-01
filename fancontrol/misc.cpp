@@ -552,6 +552,14 @@ FANCONTROL::ReadConfig(const char* configfile)
 
 		fclose(f);
 
+		// Safety check: If SingleFan=1, force IndependentFans to 0
+		if (this->SingleFan) {
+			if (this->IndependentFans) {
+				this->Trace("WARNING: SingleFan=1 and IndependentFans=1 is invalid. Forcing IndependentFans=0 for safety.");
+			}
+			this->IndependentFans = 0;
+		}
+
 		if (this->StayOnTop)
 			this->hwndDialog = ::CreateDialogParam(hinstapp,
 				MAKEINTRESOURCE(9000),
