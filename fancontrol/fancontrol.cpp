@@ -281,19 +281,9 @@ void FANCONTROL::InitDialogWindow() {
 				this);
 	}
 
-	// Dynamically resize State field (8100) based on IndependentFans setting
-	// When IndependentFans=1, we need more width to show both fan states
-	// This must be done AFTER the SlimDialog recreation above
 	if (!this->SlimDialog) {
 		HWND hStateField = ::GetDlgItem(this->hwndDialog, 8100);
 		HWND hGroupBox = ::GetDlgItem(this->hwndDialog, 8200);
-
-		// NOTE: GroupBox dynamic resizing disabled due to Windows groupbox redraw bug
-		// The groupbox border does not redraw correctly when resized at runtime.
-		// WORKAROUND: Set groupbox to maximum width (225 DLU) in resource file.
-		// The code below successfully resizes the groupbox control (verified by GetWindowRect),
-		// but the border visual does not update despite multiple redraw attempts.
-		// Original code is left here commented for reference.
 
 		if (hGroupBox) {
 			RECT gbRect;
@@ -304,21 +294,21 @@ void FANCONTROL::InitDialogWindow() {
 
 			int groupboxWidthDLU; // Dialog units for groupbox
 
-			RECT rcGbDlg = { 0, 0, groupboxWidthDLU, 0 };
-			::MapDialogRect(this->hwndDialog, &rcGbDlg);
-
 			if (!this->SingleFan && this->IndependentFans) {
 				// Independent fans mode: wider field for dual fan display
-				groupboxWidthDLU = 225; // (131-97) + 181 + 10 padding
+				groupboxWidthDLU = 225;
 			}
 			else {
 				// Single/unified mode: standard width
-				groupboxWidthDLU = 165; // (131-97) + 121 + 10 padding
+				groupboxWidthDLU = 165;
 			}
 
 			// Convert dialog units to pixels
 			RECT rcStateDlg = { 0, 0, groupboxWidthDLU, 13 };
 			::MapDialogRect(this->hwndDialog, &rcStateDlg);
+
+			RECT rcGbDlg = { 0, 0, groupboxWidthDLU, 0 };
+			::MapDialogRect(this->hwndDialog, &rcGbDlg);
 
 			int gbWidthPixels = rcGbDlg.right;
 			int gbHeight = gbRect.bottom - gbRect.top;
@@ -332,7 +322,7 @@ void FANCONTROL::InitDialogWindow() {
 			this->Trace(dbuf);
 
 			// Resize the groupbox
-			BOOL gbResult = ::MoveWindow(hGroupBox, gbPt.x, gbPt.y, gbWidthPixels, gbHeight, FALSE);
+			BOOL gbResult = ::MoveWindow(hGroupBox, gbPt.x, gbPt.y, gbWidthPixels, gbHeight, TRUE);
 
 			if (!gbResult) {
 				this->Trace("ERROR: MoveWindow failed for GroupBox");
@@ -351,10 +341,10 @@ void FANCONTROL::InitDialogWindow() {
 
 			if (!this->SingleFan && this->IndependentFans) {
 				// Independent fans mode: wider field for dual fan display
-				stateWidthDLU = 181; // Wide enough for "Fan1: 0x05, Fan2: 0x07 (Fan1 Level 5, Fan2 Level 7, Non Bios)"
+				stateWidthDLU = 181;
 			} else {
 				// Single/unified mode: standard width
-				stateWidthDLU = 121; // Original width for "0x05 (Fan Level 5, Non Bios)"
+				stateWidthDLU = 121;
 			}
 
 			// Convert dialog units to pixels
