@@ -326,7 +326,7 @@ void FANCONTROL::InitDialogWindow() {
 			// Debug trace
 			char dbuf[512];
 			sprintf_s(dbuf, sizeof(dbuf),
-				"Dynamic resize State field: SlimDialog=%d, SingleFan=%d, IndependentFans=%d, State: %d DLU -> %d px (old: %d px)",
+				"Dynamic resize GroupBox: SlimDialog=%d, SingleFan=%d, IndependentFans=%d, GroupBox: %d DLU -> %d px (old: %d px)",
 				this->SlimDialog, this->SingleFan, this->IndependentFans,
 				groupboxWidthDLU, gbWidthPixels, gbRect.right - gbRect.left);
 			this->Trace(dbuf);
