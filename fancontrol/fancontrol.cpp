@@ -280,6 +280,106 @@ void FANCONTROL::InitDialogWindow() {
 				(LPARAM)
 				this);
 	}
+
+	// Dynamically resize State field (8100) based on IndependentFans setting
+	// When IndependentFans=1, we need more width to show both fan states
+	// This must be done AFTER the SlimDialog recreation above
+	if (!this->SlimDialog) {
+		HWND hStateField = ::GetDlgItem(this->hwndDialog, 8100);
+		// HWND hGroupBox = ::GetDlgItem(this->hwndDialog, 8200);
+
+		// NOTE: GroupBox dynamic resizing disabled due to Windows groupbox redraw bug
+		// The groupbox border does not redraw correctly when resized at runtime.
+		// WORKAROUND: Set groupbox to maximum width (225 DLU) in resource file.
+		// The code below successfully resizes the groupbox control (verified by GetWindowRect),
+		// but the border visual does not update despite multiple redraw attempts.
+		// Original code is left here commented for reference.
+
+		if (hStateField) {
+			// Get current positions in client coordinates
+			RECT stateRect;
+			::GetWindowRect(hStateField, &stateRect);
+
+			POINT statePt = { stateRect.left, stateRect.top };
+			::ScreenToClient(this->hwndDialog, &statePt);
+
+			int stateWidthDLU; // Dialog units for State field
+			// int groupboxWidthDLU; // Dialog units for groupbox
+
+			if (!this->SingleFan && this->IndependentFans) {
+				// Independent fans mode: wider field for dual fan display
+				stateWidthDLU = 181; // Wide enough for "Fan1: 0x05, Fan2: 0x07 (Fan1 Level 5, Fan2 Level 7, Non Bios)"
+				// groupboxWidthDLU = 225; // (131-97) + 181 + 10 padding
+			} else {
+				// Single/unified mode: standard width
+				stateWidthDLU = 121; // Original width for "0x05 (Fan Level 5, Non Bios)"
+				// groupboxWidthDLU = 165; // (131-97) + 121 + 10 padding
+			}
+
+			// Convert dialog units to pixels
+			RECT rcStateDlg = { 0, 0, stateWidthDLU, 13 };
+			::MapDialogRect(this->hwndDialog, &rcStateDlg);
+
+			int stateWidthPixels = rcStateDlg.right;
+			int stateHeight = stateRect.bottom - stateRect.top;
+
+			// Debug trace
+			char dbuf[512];
+			sprintf_s(dbuf, sizeof(dbuf), 
+				"Dynamic resize State field: SlimDialog=%d, SingleFan=%d, IndependentFans=%d, State: %d DLU -> %d px (old: %d px)",
+				this->SlimDialog, this->SingleFan, this->IndependentFans,
+				stateWidthDLU, stateWidthPixels, stateRect.right - stateRect.left);
+			this->Trace(dbuf);
+
+			// Resize the State field
+			BOOL stateResult = ::MoveWindow(hStateField, statePt.x, statePt.y, stateWidthPixels, stateHeight, TRUE);
+
+			if (!stateResult) {
+				this->Trace("ERROR: MoveWindow failed for State field");
+			}
+		}
+
+		/* COMMENTED OUT: GroupBox dynamic resize code (does not work due to Windows groupbox redraw bug)
+		if (hGroupBox) {
+			RECT gbRect;
+			::GetWindowRect(hGroupBox, &gbRect);
+
+			POINT gbPt = { gbRect.left, gbRect.top };
+			::ScreenToClient(this->hwndDialog, &gbPt);
+
+			RECT rcGbDlg = { 0, 0, groupboxWidthDLU, 0 };
+			::MapDialogRect(this->hwndDialog, &rcGbDlg);
+
+			int gbWidthPixels = rcGbDlg.right;
+			int gbHeight = gbRect.bottom - gbRect.top;
+
+			// Calculate the area that needs to be invalidated (entire groupbox area plus margin)
+			RECT invalidRect;
+			invalidRect.left = gbPt.x;
+			invalidRect.top = gbPt.y;
+			invalidRect.right = gbPt.x + max(gbRect.right - gbRect.left, gbWidthPixels) + 20;
+			invalidRect.bottom = gbPt.y + gbHeight + 10;
+
+			// Invalidate the groupbox area on the parent BEFORE resizing
+			::InvalidateRect(this->hwndDialog, &invalidRect, TRUE);
+
+			// Resize the groupbox
+			BOOL gbResult = ::MoveWindow(hGroupBox, gbPt.x, gbPt.y, gbWidthPixels, gbHeight, FALSE);
+
+			// Invalidate the groupbox area on the parent AFTER resizing
+			::InvalidateRect(this->hwndDialog, &invalidRect, TRUE);
+
+			// Force the groupbox to repaint itself
+			::InvalidateRect(hGroupBox, NULL, TRUE);
+			::UpdateWindow(hGroupBox);
+			::UpdateWindow(this->hwndDialog);
+
+			if (!gbResult) {
+				this->Trace("ERROR: MoveWindow failed for GroupBox");
+			}
+		}
+		*/
+	}
 }
 
 //-------------------------------------------------------------------------
@@ -865,7 +965,9 @@ ULONG FANCONTROL::OnTimer(WPARAM timerId) {
 		break;
 
 	case 2: { // update window title
-		if (this->CurrentMode == 3 && this->MaxTemp > this->ManModeExitInternal) {
+		// Auto-switch from Manual to Smart mode if temperature exceeds threshold
+		// (only if ManModeExitInternal > 0, otherwise this feature is disabled)
+		if (this->CurrentMode == 3 && this->ManModeExitInternal > 0 && this->MaxTemp > this->ManModeExitInternal) {
 			this->ModeToDialog(2);
 			::PostMessage(this->hwndDialog, WM__GETDATA, 0, 0);
 		}

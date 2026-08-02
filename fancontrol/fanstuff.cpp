@@ -175,27 +175,66 @@ bool FANCONTROL::HandleData(void) {
 	fanctrl2 = fanctrl;
 
 	if (this->SlimDialog == 1) {
-		sprintf_s(obuf2, sizeof(obuf2), "Fan %d ", fanctrl);
-		if (fanctrl & 0x80) {
-			if (!(SlimDialog && StayOnTop))
-				strcat_s(obuf2, sizeof(obuf2), "(= BIOS)");
-			strcat_s(title2, sizeof(title2), " Default Fan");
+		// Slim dialog display
+		if (!this->SingleFan && this->IndependentFans) {
+			// Show both fan states
+			sprintf_s(obuf2, sizeof(obuf2), "F1:%d F2:%d ", this->State.Fan1Ctrl, this->State.Fan2Ctrl);
+			if ((this->State.Fan1Ctrl & 0x80) && (this->State.Fan2Ctrl & 0x80)) {
+				if (!(SlimDialog && StayOnTop))
+					strcat_s(obuf2, sizeof(obuf2), "(= BIOS)");
+				strcat_s(title2, sizeof(title2), " Default Fan");
+			}
+			else {
+				if (!(SlimDialog && StayOnTop))
+					strcat_s(obuf2, sizeof(obuf2), " Non Bios");
+				sprintf_s(title2 + strlen(title2), sizeof(title2) - strlen(title2), " F1:%d F2:%d (%s)", 
+					this->State.Fan1Ctrl & 0x3F, this->State.Fan2Ctrl & 0x3F, 
+					this->CurrentModeFromDialog() == 2 ? "Smart" : "Fixed");
+			}
 		}
 		else {
-			if (!(SlimDialog && StayOnTop))
-				sprintf_s(obuf2 + strlen(obuf2), sizeof(obuf2) - strlen(obuf2), " Non Bios");
-			sprintf_s(title2 + strlen(title2), sizeof(title2) - strlen(title2), " Fan %d (%s)", fanctrl & 0x3F, this->CurrentModeFromDialog() == 2 ? "Smart" : "Fixed");
+			// Original single fan display
+			sprintf_s(obuf2, sizeof(obuf2), "Fan %d ", fanctrl);
+			if (fanctrl & 0x80) {
+				if (!(SlimDialog && StayOnTop))
+					strcat_s(obuf2, sizeof(obuf2), "(= BIOS)");
+				strcat_s(title2, sizeof(title2), " Default Fan");
+			}
+			else {
+				if (!(SlimDialog && StayOnTop))
+					sprintf_s(obuf2 + strlen(obuf2), sizeof(obuf2) - strlen(obuf2), " Non Bios");
+				sprintf_s(title2 + strlen(title2), sizeof(title2) - strlen(title2), " Fan %d (%s)", fanctrl & 0x3F, this->CurrentModeFromDialog() == 2 ? "Smart" : "Fixed");
+			}
 		}
 	}
 	else {
-		sprintf_s(obuf2, sizeof(obuf2), "0x%02x (", fanctrl);
-		if (fanctrl & 0x80) {
-			strcat_s(obuf2, sizeof(obuf2), "BIOS Controlled)");
-			strcat_s(title2, sizeof(title2), " Default Fan");
+		// Normal dialog display
+		if (!this->SingleFan && this->IndependentFans) {
+			// Show both fan states
+			sprintf_s(obuf2, sizeof(obuf2), "Fan1: 0x%02x, Fan2: 0x%02x (", this->State.Fan1Ctrl, this->State.Fan2Ctrl);
+			if ((this->State.Fan1Ctrl & 0x80) && (this->State.Fan2Ctrl & 0x80)) {
+				strcat_s(obuf2, sizeof(obuf2), "BIOS Controlled)");
+				strcat_s(title2, sizeof(title2), " Default Fan");
+			}
+			else {
+				sprintf_s(obuf2 + strlen(obuf2), sizeof(obuf2) - strlen(obuf2), "Fan1 Level %d, Fan2 Level %d, Non Bios)", 
+					this->State.Fan1Ctrl & 0x3F, this->State.Fan2Ctrl & 0x3F);
+				sprintf_s(title2 + strlen(title2), sizeof(title2) - strlen(title2), " F1:%d F2:%d (%s)", 
+					this->State.Fan1Ctrl & 0x3F, this->State.Fan2Ctrl & 0x3F, 
+					this->CurrentModeFromDialog() == 2 ? "Smart" : "Fixed");
+			}
 		}
 		else {
-			sprintf_s(obuf2 + strlen(obuf2), sizeof(obuf2) - strlen(obuf2), "Fan Level %d, Non Bios)", fanctrl & 0x3F);
-			sprintf_s(title2 + strlen(title2), sizeof(title2) - strlen(title2), " Fan %d (%s)", fanctrl & 0x3F, this->CurrentModeFromDialog() == 2 ? "Smart" : "Fixed");
+			// Original single fan display
+			sprintf_s(obuf2, sizeof(obuf2), "0x%02x (", fanctrl);
+			if (fanctrl & 0x80) {
+				strcat_s(obuf2, sizeof(obuf2), "BIOS Controlled)");
+				strcat_s(title2, sizeof(title2), " Default Fan");
+			}
+			else {
+				sprintf_s(obuf2 + strlen(obuf2), sizeof(obuf2) - strlen(obuf2), "Fan Level %d, Non Bios)", fanctrl & 0x3F);
+				sprintf_s(title2 + strlen(title2), sizeof(title2) - strlen(title2), " Fan %d (%s)", fanctrl & 0x3F, this->CurrentModeFromDialog() == 2 ? "Smart" : "Fixed");
+			}
 		}
 	}
 
@@ -478,7 +517,9 @@ bool FANCONTROL::HandleData(void) {
 
 	this->PreviousMode = this->CurrentMode;
 
-	if (this->CurrentMode == 3 && this->MaxTemp > this->ManModeExitInternal)
+	// Auto-switch from Manual to Smart mode if temperature exceeds threshold
+	// (only if ManModeExitInternal > 0, otherwise this feature is disabled)
+	if (this->CurrentMode == 3 && this->ManModeExitInternal > 0 && this->MaxTemp > this->ManModeExitInternal)
 		this->CurrentMode = 2;
 
 	return ok;
