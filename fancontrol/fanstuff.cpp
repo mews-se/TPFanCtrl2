@@ -19,6 +19,9 @@
 #include "fancontrol.h"
 #include "tools.h"
 #include "TVicPort.h"
+#include "sharedstate.h"
+
+extern bool g_clientMode;
 
 constexpr auto TP_ECOFFSET_FAN		  = (char)0x2F;    // 1 byte (binary xyzz zzz);
 constexpr auto TP_ECOFFSET_FANSPEED	  = (char)0x84;    // 16 bit word, lo/hi byte;
@@ -244,8 +247,41 @@ bool FANCONTROL::HandleData(void) {
 	// handle fan control according to mode
 	//
 
-	this->CurrentModeFromDialog();
+	// everything below writes the fan register, which a client never does
 	this->ShowAllFromDialog();
+	if (g_clientMode)
+		return true;
+
+	// a client leaves the user's choice here for the engine to act on
+	FCSHARED* shared = SharedState();
+	if (shared && shared->cmdSeq != this->LastCmdSeq) {
+		this->LastCmdSeq = shared->cmdSeq;
+
+		if (shared->cmdSmart == 0 || shared->cmdSmart == 1)
+			this->SwitchSmartLevel(shared->cmdSmart);
+		else if (shared->cmdMode >= 1 && shared->cmdMode <= 3) {
+			// an empty box would parse as level 0, the fan off
+			if (shared->cmdMode == 3 && shared->cmdLevelText[0])
+				::SetDlgItemText(this->hwndDialog, 8310, shared->cmdLevelText);
+			this->ModeToDialog(shared->cmdMode);
+		}
+	}
+
+	this->CurrentModeFromDialog();
+
+	if (shared) {
+		shared->ackSeq = this->LastCmdSeq;
+		shared->mode = this->CurrentMode;
+		shared->smartLevel = this->IndSmartLevel;
+		shared->fanCtrl = (unsigned char)this->State.FanCtrl;
+		shared->fan1lo = (unsigned char)this->State.Fan1SpeedLo;
+		shared->fan1hi = (unsigned char)this->State.Fan1SpeedHi;
+		shared->fan2lo = (unsigned char)this->State.Fan2SpeedLo;
+		shared->fan2hi = (unsigned char)this->State.Fan2SpeedHi;
+		for (i = 0; i < 12; i++)
+			shared->sensors[i] = (unsigned char)this->State.Sensors[i];
+		::InterlockedIncrement(&shared->stateSeq);
+	}
 
 	switch (this->CurrentMode) {
 
@@ -402,6 +438,9 @@ bool FANCONTROL::SetFan(const char* source, int fanctrl, bool final) {
 	int ok = 0, fan1_ok = 0, fan2_ok = 0;
 	char* p = obuf;
 
+	if (g_clientMode)
+		return false;
+
 	if (this->FanBeepFreq && this->FanBeepDura)
 		::Beep(this->FanBeepFreq, this->FanBeepDura);
 
@@ -480,6 +519,9 @@ bool FANCONTROL::SetHdw(const char* source, int hdwctrl, int HdwOffset, int AnyW
 		 datebuf[128],
 		 newhdwctrl;
 	int ok = 0;
+
+	if (g_clientMode)
+		return false;
 
 	if (!this->LockECAccess()) return false;
 

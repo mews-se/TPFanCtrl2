@@ -36,8 +36,30 @@ extern HINSTANCE hInstApp, hInstRes;
 //  Create/Delete/Lock/Unlock mutually exclusive semaphores
 //-------------------------------------------------------------------------
 
+bool SharedSecurity(SECURITY_ATTRIBUTES* sa) {
+	sa->nLength = sizeof(*sa);
+	sa->lpSecurityDescriptor = NULL;
+	sa->bInheritHandle = FALSE;
+
+	return ::ConvertStringSecurityDescriptorToSecurityDescriptorA(
+		"D:(A;;GA;;;WD)", SDDL_REVISION_1, &sa->lpSecurityDescriptor, NULL) != 0;
+}
+
+HANDLE CreateSharedMutex(const char* name, BOOL initialOwner) {
+	SECURITY_ATTRIBUTES sa;
+	bool shared = SharedSecurity(&sa);
+
+	HANDLE h = ::CreateMutex(shared ? &sa : NULL, initialOwner, name);
+
+	if (shared)
+		::LocalFree(sa.lpSecurityDescriptor);
+
+	return h;
+}
+
 MUTEXSEM::MUTEXSEM(int state, const char* name) {
-	this->hmux = ::CreateMutex(NULL, (state ? TRUE : FALSE), name);
+	this->hmux = name ? CreateSharedMutex(name, state ? TRUE : FALSE)
+		: ::CreateMutex(NULL, (state ? TRUE : FALSE), NULL);
 }
 
 MUTEXSEM::~MUTEXSEM() {

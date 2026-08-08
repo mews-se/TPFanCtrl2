@@ -17,10 +17,14 @@
 #include "_prec.h"
 #include "fancontrol.h"
 #include "taskbartexticon.h"
+#include "sharedstate.h"
 #include <vector>
 #include <string>
 #include <winevt.h>
 #pragma comment(lib, "wevtapi.lib")
+
+extern bool g_clientMode;
+extern HANDLE CreateSharedEvent(const char* name);
 
 DEFINE_GUID(GUID_LIDSWITCH_STATE_CHANGE,
 	0xba3e0f4d, 0xb817, 0x4094,
@@ -106,6 +110,8 @@ FANCONTROL::FANCONTROL(HINSTANCE hinstapp)
 	m_iconTimer(NULL),
 	m_renewTimer(NULL),
 	m_needClose(false),
+	LastCmdSeq(0),
+	LastStateSeq(0),
 	ppTbTextIcon(NULL),
 	pTextIconMutex(new MUTEXSEM(0, "Global\\TPFanControl_ppTbTextIcon")) {
 
@@ -738,7 +744,10 @@ ULONG FANCONTROL::DlgProc(HWND hwnd, ULONG msg, WPARAM mp1, LPARAM mp2) {
 		break;
 
 	case WM__GETDATA:
-		if (!this->hThread && !this->FinalSeen)
+		// a client has no port access, so it hands the change to the engine
+		if (g_clientMode)
+			this->SendCommand(-1);
+		else if (!this->hThread && !this->FinalSeen)
 			this->hThread = this->CreateThread(FANCONTROL_Thread, (ULONG)this);
 		break;
 
@@ -825,12 +834,31 @@ ULONG FANCONTROL::OnHotKey(WPARAM mp1) {
 //  WM_TIMER handler
 //-------------------------------------------------------------------------
 ULONG FANCONTROL::OnTimer(WPARAM timerId) {
+	// an outside shutdown request, taken through TryClose so the BIOS gets the fan back
+	static HANDLE closeEvent = CreateSharedEvent("Global\\TPFanControl_Close");
+	if (closeEvent && ::WaitForSingleObject(closeEvent, 0) == WAIT_OBJECT_0) {
+		// the engine clears it, so the next instance is not shut down by a stale request
+		if (!g_clientMode)
+			::ResetEvent(closeEvent);
+
+		this->Trace("Close requested by another instance");
+		TryClose();
+		return 0;
+	}
+
 	switch (timerId) {
 	case 1: // update fan state
-		::PostMessage(this->hwndDialog, WM__GETDATA, 0, 0);
+	{
+		// WM__GETDATA starts an EC read, so a client draws the published state instead
+		if (g_clientMode)
+			this->PullSharedState();
+		else
+			::PostMessage(this->hwndDialog, WM__GETDATA, 0, 0);
+
 		if (this->Log2csv == 1)
 			this->Tracecsv(this->CurrentStatuscsv);
 		break;
+	}
 
 	case 2: { // update window title
 		if (this->CurrentMode == 3 && this->MaxTemp > this->ManModeExitInternal) {
@@ -880,6 +908,10 @@ ULONG FANCONTROL::OnTimer(WPARAM timerId) {
 	}
 
 	case 3: { // update vista icon / named pipe
+		// the engine already publishes on this pipe name, a client must not
+		if (g_clientMode)
+			break;
+
 		// Reconnect if previous write failed
 		if (bResult == FALSE && lbResult == TRUE) {
 			_piscreated = FALSE;
@@ -930,6 +962,68 @@ ULONG FANCONTROL::OnTimer(WPARAM timerId) {
 		this->RemoveTextIcons();
 
 	return 0;
+}
+
+//-------------------------------------------------------------------------
+//  autostart: the service owns the fan from boot, a Run entry brings up the
+//  tray window in whichever session logs on. Neither works alone.
+//-------------------------------------------------------------------------
+DWORD InstallService(bool quiet);
+DWORD UninstallService(bool quiet);
+bool IsElevated();
+bool RunSelfElevated(const char* args, bool wait);
+
+static const char* RUN_KEY = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+
+static bool AutostartEnabled() {
+	SC_HANDLE mgr = ::OpenSCManager(NULL, NULL, SC_MANAGER_CONNECT);
+	if (!mgr)
+		return false;
+
+	SC_HANDLE svc = ::OpenService(mgr, "TPFanControl", SERVICE_QUERY_STATUS);
+	bool on = (svc != NULL);
+	if (svc)
+		::CloseServiceHandle(svc);
+	::CloseServiceHandle(mgr);
+
+	return on;
+}
+
+static bool SetRunEntry(bool on) {
+	HKEY key;
+	if (::RegOpenKeyEx(HKEY_CURRENT_USER, RUN_KEY, 0, KEY_SET_VALUE, &key) != ERROR_SUCCESS)
+		return false;
+
+	LONG rc;
+	if (on) {
+		char exe[MAX_PATH], quoted[MAX_PATH + 2];
+		::GetModuleFileName(NULL, exe, MAX_PATH);
+		sprintf_s(quoted, sizeof(quoted), "\"%s\"", exe);
+		rc = ::RegSetValueEx(key, "TPFanControl", 0, REG_SZ,
+			(const BYTE*)quoted, (DWORD)strlen(quoted) + 1);
+	}
+	else {
+		rc = ::RegDeleteValue(key, "TPFanControl");
+		if (rc == ERROR_FILE_NOT_FOUND)
+			rc = ERROR_SUCCESS;
+	}
+
+	::RegCloseKey(key);
+
+	return rc == ERROR_SUCCESS;
+}
+
+static bool SetAutostart(bool on) {
+	// the run entry is this user's own, the service needs elevation
+	bool svc = IsElevated()
+		? (on ? InstallService(true) : UninstallService(true)) == 0
+		: RunSelfElevated(on ? "-i -q" : "-u -q", true);
+
+	// a run entry with no service behind it would prompt for elevation at every logon
+	if (on)
+		return svc && SetRunEntry(true);
+
+	return SetRunEntry(false) && svc;
 }
 
 //-------------------------------------------------------------------------
@@ -1008,7 +1102,26 @@ ULONG FANCONTROL::OnCommand(WPARAM mp1) {
 			::ShowWindow(this->hwndDialog, SW_MINIMIZE);
 			break;
 
+		case 5050: // start with windows toggle
+		{
+			bool on = !AutostartEnabled();
+			this->Trace(SetAutostart(on)
+				? (on ? "Enabled start with Windows" : "Disabled start with Windows")
+				: "Failed to change start with Windows");
+			break;
+		}
+
 		case 5020: // end program
+			// closing the window ends the engine too, which hands the fan back to the BIOS
+			if (g_clientMode) {
+				HANDLE stop = CreateSharedEvent("Global\\TPFanControl_Close");
+				if (stop) {
+					this->Trace("Asking the instance that owns the fan to close");
+					::SetEvent(stop);
+					::CloseHandle(stop);
+				}
+			}
+
 			TryClose();
 			break;
 		}
@@ -1252,6 +1365,11 @@ ULONG FANCONTROL::OnTaskbarNotify(LPARAM mp2) {
 
 		this->FreeECAccess();
 
+		if (Runs_as_service)
+			m.DeleteMenuItem(5050);
+		else if (AutostartEnabled())
+			m.CheckMenuItem(5050);
+
 		m.Popup(this->hwndDialog);
 		break;
 	}
@@ -1277,7 +1395,8 @@ bool FANCONTROL::TryClose() {
 	}
 
 	// don't close if we can't set the fan back to bios controlled
-	if (!this->ActiveMode || this->SetFan("On close", 0x80, true)) {
+	// a client has no fan to hand back, and SetFan refuses for it anyway
+	if (g_clientMode || !this->ActiveMode || this->SetFan("On close", 0x80, true)) {
 		::KillTimer(this->hwndDialog, m_fanTimer);
 		::KillTimer(this->hwndDialog, m_titleTimer);
 		::KillTimer(this->hwndDialog, m_iconTimer);
@@ -1299,6 +1418,13 @@ bool FANCONTROL::TryClose() {
 //-------------------------------------------------------------------------
 void FANCONTROL::SwitchSmartLevel(int level) {
 	this->ModeToDialog(2);
+
+	// the profile tables live in the engine, a client only names the one it wants
+	if (g_clientMode) {
+		this->IndSmartLevel = level;
+		this->SendCommand(level);
+		return;
+	}
 
 	if (level == 0 && this->IndSmartLevel != 0) {
 		this->Trace("Activation of Fan Control Profile 'Smart Mode 1'");
@@ -1324,9 +1450,58 @@ void FANCONTROL::SwitchSmartLevel(int level) {
 }
 
 //-------------------------------------------------------------------------
+//  client: draw what the engine last published
+//-------------------------------------------------------------------------
+void FANCONTROL::PullSharedState() {
+	FCSHARED* shared = SharedState();
+	if (!shared || shared->stateSeq == this->LastStateSeq)
+		return;
+
+	this->LastStateSeq = shared->stateSeq;
+
+	this->State.FanCtrl     = (char)shared->fanCtrl;
+	this->State.Fan1SpeedLo = (char)shared->fan1lo;
+	this->State.Fan1SpeedHi = (char)shared->fan1hi;
+	this->State.Fan2SpeedLo = (char)shared->fan2lo;
+	this->State.Fan2SpeedHi = (char)shared->fan2hi;
+
+	for (int i = 0; i < 12; i++)
+		this->State.Sensors[i] = (char)shared->sensors[i];
+
+	// follow the engine's mode once it has acted on everything we asked for
+	if (shared->ackSeq >= this->LastCmdSeq) {
+		if (shared->mode != this->CurrentModeFromDialog())
+			this->ModeToDialog(shared->mode);
+		this->IndSmartLevel = shared->smartLevel;
+	}
+
+	::PostMessage(this->hwndDialog, WM__NEWDATA, 1, 0);
+}
+
+//-------------------------------------------------------------------------
+//  client: hand the user's choice to the engine
+//-------------------------------------------------------------------------
+void FANCONTROL::SendCommand(int smart) {
+	FCSHARED* shared = SharedState();
+	if (!shared)
+		return;
+
+	::GetDlgItemText(this->hwndDialog, 8310, shared->cmdLevelText, sizeof(shared->cmdLevelText));
+
+	shared->cmdSmart = smart;
+	shared->cmdMode = this->CurrentModeFromDialog();
+
+	this->LastCmdSeq = ::InterlockedIncrement(&shared->cmdSeq);
+}
+
+//-------------------------------------------------------------------------
 //  create all named pipes for client GUI communication
 //-------------------------------------------------------------------------
 void FANCONTROL::CreateAllNamedPipes() {
+	// TPFCIcon runs in the user's session, the engine usually as SYSTEM
+	SECURITY_ATTRIBUTES sa;
+	bool shared = SharedSecurity(&sa);
+
 	for (int i = 0; i < NUM_PIPES; i++) {
 		this->hPipes[i] = CreateNamedPipe(
 			g_szPipeName,             // pipe name
@@ -1338,15 +1513,19 @@ void FANCONTROL::CreateAllNamedPipes() {
 			BUFFER_SIZE,              // output buffer size
 			BUFFER_SIZE,              // input buffer size
 			NMPWAIT_USE_DEFAULT_WAIT, // client time-out
-			NULL);                    // default security attribute
+			shared ? &sa : NULL);     // readable from any session
 
 		if (INVALID_HANDLE_VALUE == this->hPipes[i]) {
+			// losing the icon pipe is not worth ending the program over
 			char errBuf[128];
-			sprintf_s(errBuf, sizeof(errBuf), "Creating Named Pipe %d client GUI was NOT successful.", i);
+			sprintf_s(errBuf, sizeof(errBuf), "Creating Named Pipe %d client GUI was NOT successful, error %d.",
+				i, ::GetLastError());
 			this->Trace(errBuf);
-			::PostMessage(this->hwndDialog, WM_COMMAND, 5020, 0);
 		}
 	}
+
+	if (shared)
+		::LocalFree(sa.lpSecurityDescriptor);
 }
 
 //-------------------------------------------------------------------------

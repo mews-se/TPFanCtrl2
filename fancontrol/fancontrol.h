@@ -165,6 +165,8 @@ protected:
 	HANDLE hPipes[NUM_PIPES];
 	HANDLE hLock;
 	HANDLE hLockS;
+	LONG LastCmdSeq;    // engine: last client command acted on
+	LONG LastStateSeq;  // client: last engine publication drawn
 	BOOL Closing;
 	MUTEXSEM EcAccess;
 	bool m_needClose;
@@ -262,6 +264,8 @@ protected:
 	// Shared helpers
 	bool TryClose();
 	void SwitchSmartLevel(int level);
+	void PullSharedState();
+	void SendCommand(int smart);
 	void CreateAllNamedPipes();
 	void WriteAllNamedPipes(const char* data);
 	void CloseAllNamedPipes();
