@@ -21,6 +21,7 @@
 #pragma once
 
 #include "_prec.h"
+#include <sddl.h>
 
 
 #ifndef NIF_STATE            // NotifyIcon V5 defines
@@ -36,6 +37,12 @@
 #endif
 
 
+// SYSTEM's default descriptor keeps a user session out, so anything both sides
+// touch needs this. On true, LocalFree(sa->lpSecurityDescriptor) when done.
+bool SharedSecurity(SECURITY_ATTRIBUTES* sa);
+
+HANDLE CreateSharedMutex(const char* name, BOOL initialOwner = FALSE);
+
 //-------------------------------------------------------------------------
 //
 //-------------------------------------------------------------------------
@@ -50,7 +57,10 @@ private:
 protected:
 
 public:
-	MUTEXSEM(int state = FALSE, const char* name = "Access_Thinkpad_EC");
+	// Access_EC in the global namespace is what other tools touching the
+	// embedded controller honour, and Windows drives the same ports itself.
+	// The old name was session local, so it coordinated with nothing.
+	MUTEXSEM(int state = FALSE, const char* name = "Global\\Access_EC");
 
 	~MUTEXSEM();
 

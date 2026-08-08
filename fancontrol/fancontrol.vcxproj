@@ -163,6 +163,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Use</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="sharedstate.cpp" />
     <ClCompile Include="SystemTraySDK.cpp" />
     <ClCompile Include="winstuff.cpp" />
     <ClCompile Include="_prec.cpp">
@@ -177,6 +178,7 @@
     <ClInclude Include="dynamicicon.h" />
     <ClInclude Include="fancontrol.h" />
     <ClInclude Include="res\resource.h" />
+    <ClInclude Include="sharedstate.h" />
     <ClInclude Include="SystemTraySDK.h" />
     <ClInclude Include="TaskbarTextIcon.h" />
     <ClInclude Include="tools.h" />

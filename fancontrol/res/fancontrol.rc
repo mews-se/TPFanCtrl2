@@ -149,6 +149,7 @@ BEGIN
     MENUITEM "Hide Window",                  5030
     MENUITEM "Symbol Icon",                  5070
     MENUITEM "Text Icon",                    5080
+    MENUITEM "Start with Windows",           5050
     MENUITEM SEPARATOR
     MENUITEM "BIOS Mode",                    5001
     MENUITEM "Smart Mode",                   5002
