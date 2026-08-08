@@ -15,6 +15,9 @@ SERVICE_STATUS g_SvcStatus = { 0 };
 SERVICE_STATUS_HANDLE g_SvcHandle = NULL;
 HWND g_dialogWnd = NULL;
 HANDLE g_workerThread = NULL;
+bool g_isService = false;
+// another instance owns the EC: no port access, display fed from shared state
+bool g_clientMode = false;
 
 void ShowError(DWORD ec, const char* description);
 
@@ -26,13 +29,13 @@ DWORD InstallService(bool quiet);
 
 DWORD UninstallService(bool quiet);
 
-VOID WINAPI Handler(DWORD fdwControl);
+DWORD WINAPI Handler(DWORD fdwControl, DWORD evtType, LPVOID evtData, LPVOID ctx);
 
 VOID WINAPI ServiceMain(DWORD aArgc, LPTSTR* aArgv);
 
 void StartWorkerThread();
 
-void StopWorkerThread();
+bool StopWorkerThread();
 
 void WorkerThread(void* dummy);
 
