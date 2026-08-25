@@ -1,3 +1,5 @@
+# This fork is now ARCHIVED and R/O
+
 # TPFanCtrl2 <img src="https://raw.githubusercontent.com/Shuzhengz/TPFanCtrl2/main/fancontrol/res/app.ico" alt = "App Icon" width = "30"/>
 
 ThinkPad Fan Control 2, a fan control utility for ThinkPad users running Windows 10/11
