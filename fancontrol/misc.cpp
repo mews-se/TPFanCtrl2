@@ -49,6 +49,12 @@ FANCONTROL::ReadConfig(const char* configfile)
 
 	this->IndSmartLevel = 0;
 
+	this->ErraticSensorGuard = 1;
+	setzero(SensorPrev, sizeof(SensorPrev));
+	setzero(SensorPrevDelta, sizeof(SensorPrevDelta));
+	setzero(SensorFlaps, sizeof(SensorFlaps));
+	setzero(SensorErratic, sizeof(SensorErratic));
+
 	//
 	// read from file
 	//
@@ -322,6 +328,12 @@ FANCONTROL::ReadConfig(const char* configfile)
 				continue;
 			}
 
+			// quarantine sensors whose readings swing back and forth between cycles
+			if (_strnicmp(buf, "ErraticSensorGuard=", 19) == 0) {
+				this->ErraticSensorGuard = atoi(buf + 19);
+				continue;
+			}
+
 			if (_strnicmp(buf, "StayOnTop=", 10) == 0) {
 				this->StayOnTop = atoi(buf + 10);
 				continue;
@@ -591,7 +603,7 @@ FANCONTROL::ReadConfig(const char* configfile)
 	//
 	// display config
 	//
-	sprintf_s(buf, sizeof(buf), "  SingleFan= %d, PowerSuspendMode= %d, ModernS0Mode= %d", this->SingleFan, this->PowerSuspendMode, this->ModernS0Mode);
+	sprintf_s(buf, sizeof(buf), "  SingleFan= %d, PowerSuspendMode= %d, ModernS0Mode= %d, ErraticSensorGuard= %d", this->SingleFan, this->PowerSuspendMode, this->ModernS0Mode, this->ErraticSensorGuard);
 	this->Trace(buf);
 
 	if (this->IconCycle <= 0 || this->IconCycle >= 60) this->IconCycle = 1;

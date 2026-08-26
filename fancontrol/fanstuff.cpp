@@ -64,6 +64,32 @@ bool FANCONTROL::HandleData(void) {
 
 		if (this->State.Sensors[i] != 0x80 && this->State.Sensors[i] != 0x00 && strstr(list, what) == 0) {
 			int isens = this->State.Sensors[i];
+
+			// a register that swings tens of degrees back and forth between cycles
+			// holds no temperature; quarantine it before it drives the fan. A real
+			// heat-up rises fast but cools slowly, so alternating signs are required.
+			if (this->ErraticSensorGuard) {
+				int delta = isens - this->SensorPrev[i];
+				if (this->SensorPrev[i] && !this->SensorErratic[i]
+					&& abs(delta) >= 20 && abs(this->SensorPrevDelta[i]) >= 20
+					&& (delta > 0) != (this->SensorPrevDelta[i] > 0)) {
+					if (++this->SensorFlaps[i] >= 3) {
+						this->SensorErratic[i] = 1;
+						if (!g_clientMode) {
+							char ebuf[96];
+							sprintf_s(ebuf, sizeof(ebuf), "Sensor %s swings between %d and %d, ignoring it",
+								this->State.SensorName[i], isens - delta, isens);
+							this->Trace(ebuf);
+						}
+					}
+				}
+				this->SensorPrevDelta[i] = delta;
+				this->SensorPrev[i] = isens;
+
+				if (this->SensorErratic[i])
+					continue;
+			}
+
 			int ioffs = this->SensorOffset[i].offs;
 
 			// do not apply offset if inside of temp range
