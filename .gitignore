@@ -37,3 +37,9 @@
 ## Debugging folder
 *Debug/
 *release/
+
+# Visual Studio leftovers
+*.VC.db
+*.vcxproj.user
+UpgradeLog*.htm
+Backup/
