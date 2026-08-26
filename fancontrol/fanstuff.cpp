@@ -452,6 +452,11 @@ void FANCONTROL::SmartControl(void) {
 		}
 	}
 
+	// in disengaged mode the EC crawls up from its current duty, useless in an
+	// emergency; step through 7 first for a regulated spin-up, 64 tops out from there
+	if (newfanctrl == 64 && fanctrl < 7)
+		newfanctrl = 7;
+
 	if (newfanctrl != -1 && newfanctrl != this->State.FanCtrl) {
 		this->SetFan("Smart", newfanctrl);
 	}
