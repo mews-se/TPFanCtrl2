@@ -49,6 +49,8 @@ FANCONTROL::ReadConfig(const char* configfile)
 
 	this->IndSmartLevel = 0;
 
+	this->LidSmartLevel = 0;
+
 	this->ErraticSensorGuard = 1;
 	setzero(SensorPrev, sizeof(SensorPrev));
 	setzero(SensorPrevDelta, sizeof(SensorPrevDelta));
@@ -328,6 +330,12 @@ FANCONTROL::ReadConfig(const char* configfile)
 				continue;
 			}
 
+			// 1 or 2 -> run that smart profile while the lid is closed (docked use)
+			if (_strnicmp(buf, "LidSmartLevel=", 14) == 0) {
+				this->LidSmartLevel = atoi(buf + 14);
+				continue;
+			}
+
 			// quarantine sensors whose readings swing back and forth between cycles
 			if (_strnicmp(buf, "ErraticSensorGuard=", 19) == 0) {
 				this->ErraticSensorGuard = atoi(buf + 19);
@@ -603,7 +611,7 @@ FANCONTROL::ReadConfig(const char* configfile)
 	//
 	// display config
 	//
-	sprintf_s(buf, sizeof(buf), "  SingleFan= %d, PowerSuspendMode= %d, ModernS0Mode= %d, ErraticSensorGuard= %d", this->SingleFan, this->PowerSuspendMode, this->ModernS0Mode, this->ErraticSensorGuard);
+	sprintf_s(buf, sizeof(buf), "  SingleFan= %d, PowerSuspendMode= %d, ModernS0Mode= %d, LidSmartLevel= %d, ErraticSensorGuard= %d", this->SingleFan, this->PowerSuspendMode, this->ModernS0Mode, this->LidSmartLevel, this->ErraticSensorGuard);
 	this->Trace(buf);
 
 	if (this->IconCycle <= 0 || this->IconCycle >= 60) this->IconCycle = 1;

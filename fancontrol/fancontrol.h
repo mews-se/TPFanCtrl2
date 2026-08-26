@@ -104,6 +104,7 @@ protected:
 	int ActiveMode;
 	int SingleFan;
 	int PowerSuspendMode;
+	int LidSmartLevel;  // 1 or 2 runs that smart profile while the lid is closed, 0 off
 	int ModernS0Mode;
 	int UseTWR,
 		ManFanSpeed,
@@ -245,6 +246,7 @@ protected:
 
 	// saved mode for power state changes
 	int savedMode;
+	int savedSmartLevel;
 	// power suspend and modern standby state tracking
 	bool isPowerSuspendState;
 	bool isModernS0State;

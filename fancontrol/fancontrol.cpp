@@ -113,6 +113,7 @@ FANCONTROL::FANCONTROL(HINSTANCE hinstapp)
 	LastCmdSeq(0),
 	LastStateSeq(0),
 	LastTraceSeq(0),
+	savedSmartLevel(-1),
 	ppTbTextIcon(NULL),
 	pTextIconMutex(new MUTEXSEM(0, "Global\\TPFanControl_ppTbTextIcon")) {
 
@@ -1174,6 +1175,14 @@ ULONG FANCONTROL::OnPowerBroadcast(WPARAM mp1, LPARAM mp2) {
 				}
 				else if (this->PowerSuspendMode == 2 || this->PowerSuspendMode >= 5) {
 					this->Trace("Continuing current mode");
+
+					// docked profile: run the other smart curve while the lid is closed
+					if (!g_clientMode && this->LidSmartLevel && this->CurrentMode == 2
+						&& this->SmartLevels2[0].temp2 != 0
+						&& this->IndSmartLevel != this->LidSmartLevel - 1) {
+						this->savedSmartLevel = this->IndSmartLevel;
+						this->SwitchSmartLevel(this->LidSmartLevel - 1);
+					}
 				}
 				else if (this->PowerSuspendMode == 3) {
 					this->ModeToDialog(3);
@@ -1194,6 +1203,11 @@ ULONG FANCONTROL::OnPowerBroadcast(WPARAM mp1, LPARAM mp2) {
 						::Sleep(1000);
 						this->Trace("Restored saved mode");
 					}
+				}
+
+				if (!g_clientMode && this->savedSmartLevel != -1) {
+					this->SwitchSmartLevel(this->savedSmartLevel);
+					this->savedSmartLevel = -1;
 				}
 			}
 		}
