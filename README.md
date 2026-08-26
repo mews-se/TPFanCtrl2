@@ -40,20 +40,34 @@ One executable, two roles:
   machines that hold no temperature.
 - `LidSmartLevel` runs a second smart profile while the lid is closed,
   for machines that work docked.
+- The EC is reached through [PawnIO](https://pawnio.eu), so fan control
+  works with memory integrity (HVCI) enabled. TVicPort remains as a
+  fallback, loaded dynamically only when needed.
 
 ## Requirements
 
-The EC is reached through TVicPort. The exe refuses to load without
-`TVicPort.dll` — put a copy next to the exe — and the kernel driver
-(`TVicPort64.sys` in `System32\drivers`) must be in place for port
-access. Both ship with the original TPFanControl installer from the
-SourceForge days; note that uninstalling that program removes them
-again, so keep your own copies.
+The EC is reached through one of two port drivers, tried in this order
+(override with `PortBackend=` in the ini):
+
+- **PawnIO** — install it from [pawnio.eu](https://pawnio.eu) or
+  `winget install namazso.PawnIO`, and keep `LpcACPIEC.bin` (bundled
+  here under `fancontrol/pawnio/`, part of the release zip) next to the
+  exe. The driver is WHQL-signed and works with memory integrity (HVCI)
+  enabled — this is the right choice on any current Windows 11 machine,
+  where TVicPort's driver is refused. The signed module reaches the EC
+  through the classic ports 0x62/0x66.
+- **TVicPort** — put `TVicPort.dll` next to the exe with its kernel
+  driver (`TVicPort64.sys` in `System32\drivers`) in place. Both ship
+  with the original TPFanControl installer from the SourceForge days;
+  uninstalling that program removes them again, so keep your own
+  copies. Only works with memory integrity off, and it is the only
+  backend that reaches the `UseTWR` sensor interface.
 
 ## Install
 
-1. Put `TPFanControl.exe`, `TPFanControl.ini` and `TVicPort.dll` in a
-   folder of their own, e.g. `C:\Program Files\TPFanCtrl2`.
+1. Put `TPFanControl.exe`, `TPFanControl.ini` and `LpcACPIEC.bin` (or
+   `TVicPort.dll`) in a folder of their own, e.g.
+   `C:\Program Files\TPFanCtrl2`.
 2. Run the exe as administrator once and enable **Start with Windows** in
    the tray menu. That installs the service and a run entry that brings
    up the tray window at logon, without elevation prompts. The same from
