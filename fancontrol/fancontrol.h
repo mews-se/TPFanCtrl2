@@ -160,7 +160,8 @@ protected:
 	int ShowTempIcon;
 	int ErraticSensorGuard;
 	int SensorPrev[12];
-	int SensorPrevDelta[12];
+	int SensorJumpLo[12];
+	int SensorJumpHi[12];
 	int SensorFlaps[12];
 	char SensorErratic[12];
 	char IgnoreSensors[256];

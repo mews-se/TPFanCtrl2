@@ -65,25 +65,30 @@ bool FANCONTROL::HandleData(void) {
 		if (this->State.Sensors[i] != 0x80 && this->State.Sensors[i] != 0x00 && strstr(list, what) == 0) {
 			int isens = this->State.Sensors[i];
 
-			// a register that swings tens of degrees back and forth between cycles
-			// holds no temperature; quarantine it before it drives the fan. A real
-			// heat-up rises fast but cools slowly, so alternating signs are required.
+			// a register that keeps jumping between the same two values holds no
+			// temperature. A real sensor never repeats the exact endpoints of a
+			// twenty degree leap, so three identical round trips quarantine it.
 			if (this->ErraticSensorGuard) {
-				int delta = isens - this->SensorPrev[i];
-				if (this->SensorPrev[i] && !this->SensorErratic[i]
-					&& abs(delta) >= 20 && abs(this->SensorPrevDelta[i]) >= 20
-					&& (delta > 0) != (this->SensorPrevDelta[i] > 0)) {
-					if (++this->SensorFlaps[i] >= 3) {
-						this->SensorErratic[i] = 1;
-						if (!g_clientMode) {
-							char ebuf[96];
-							sprintf_s(ebuf, sizeof(ebuf), "Sensor %s swings between %d and %d, ignoring it",
-								this->State.SensorName[i], isens - delta, isens);
-							this->Trace(ebuf);
+				int prev = this->SensorPrev[i];
+				if (prev && !this->SensorErratic[i] && abs(isens - prev) >= 20) {
+					int lo = __min(prev, isens), hi = __max(prev, isens);
+					if (lo == this->SensorJumpLo[i] && hi == this->SensorJumpHi[i]) {
+						if (++this->SensorFlaps[i] >= 3) {
+							this->SensorErratic[i] = 1;
+							if (!g_clientMode) {
+								char ebuf[96];
+								sprintf_s(ebuf, sizeof(ebuf), "Sensor %s jumps between %d and %d, ignoring it",
+									this->State.SensorName[i], lo, hi);
+								this->Trace(ebuf);
+							}
 						}
 					}
+					else {
+						this->SensorJumpLo[i] = lo;
+						this->SensorJumpHi[i] = hi;
+						this->SensorFlaps[i] = 1;
+					}
 				}
-				this->SensorPrevDelta[i] = delta;
 				this->SensorPrev[i] = isens;
 
 				if (this->SensorErratic[i])

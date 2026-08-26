@@ -53,7 +53,8 @@ FANCONTROL::ReadConfig(const char* configfile)
 
 	this->ErraticSensorGuard = 1;
 	setzero(SensorPrev, sizeof(SensorPrev));
-	setzero(SensorPrevDelta, sizeof(SensorPrevDelta));
+	setzero(SensorJumpLo, sizeof(SensorJumpLo));
+	setzero(SensorJumpHi, sizeof(SensorJumpHi));
 	setzero(SensorFlaps, sizeof(SensorFlaps));
 	setzero(SensorErratic, sizeof(SensorErratic));
 
