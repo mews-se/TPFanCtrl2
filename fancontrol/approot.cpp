@@ -279,6 +279,9 @@ DWORD InstallService(bool quiet) {
         return ec;
     }
 
+    // hand the fan to the engine right away rather than at the next boot
+    StartService(svc, 0, NULL);
+
     CloseServiceHandle(svc);
     CloseServiceHandle(SCMgr);
 
