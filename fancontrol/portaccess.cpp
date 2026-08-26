@@ -143,18 +143,46 @@ PawnIoClose(void) {
 	}
 }
 
-static bool
-PawnIoOpen(void) {
+static HANDLE
+OpenPawnIoDevice(void) {
 	// the documented device path; the DosDevices symlink is deprecated but
 	// covers driver builds that still provide only that
-	g_pawnio = ::CreateFileW(L"\\\\.\\GLOBALROOT\\Device\\PawnIO",
+	HANDLE device = ::CreateFileW(L"\\\\.\\GLOBALROOT\\Device\\PawnIO",
 		GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
 		NULL, OPEN_EXISTING, 0, NULL);
 
-	if (g_pawnio == INVALID_HANDLE_VALUE)
-		g_pawnio = ::CreateFileW(L"\\\\.\\PawnIO",
+	if (device == INVALID_HANDLE_VALUE)
+		device = ::CreateFileW(L"\\\\.\\PawnIO",
 			GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
 			NULL, OPEN_EXISTING, 0, NULL);
+
+	return device;
+}
+
+// the driver installs as demand start and expects its clients to bring it
+// up; the engine runs elevated or as SYSTEM, so it may
+static void
+StartPawnIoDriver(void) {
+	SC_HANDLE mgr = ::OpenSCManager(NULL, NULL, SC_MANAGER_CONNECT);
+	if (!mgr) return;
+
+	SC_HANDLE svc = ::OpenService(mgr, "PawnIO", SERVICE_START);
+	if (svc) {
+		::StartService(svc, 0, NULL);
+		::CloseServiceHandle(svc);
+	}
+
+	::CloseServiceHandle(mgr);
+}
+
+static bool
+PawnIoOpen(void) {
+	g_pawnio = OpenPawnIoDevice();
+
+	if (g_pawnio == INVALID_HANDLE_VALUE) {
+		StartPawnIoDriver();
+		g_pawnio = OpenPawnIoDevice();
+	}
 
 	if (g_pawnio == INVALID_HANDLE_VALUE)
 		return false;
