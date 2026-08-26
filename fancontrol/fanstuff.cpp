@@ -382,6 +382,11 @@ bool FANCONTROL::HandleData(void) {
 		}
 
 		if (speedVal >= 0 && speedVal <= 255) {
+			// same staircase as smart mode: run 7 regulated until the fan is
+			// spun up, then disengage for the last few hundred rpm
+			if (speedVal == 64 && this->State.FanCtrl != 64 && this->fan1speed < 4000)
+				speedVal = 7;
+
 			if (this->State.FanCtrl != speedVal)
 				ok = this->SetFan("Manual", speedVal);
 			else
