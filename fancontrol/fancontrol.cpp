@@ -1465,8 +1465,11 @@ void FANCONTROL::PullSharedState() {
 	this->State.Fan2SpeedLo = (char)shared->fan2lo;
 	this->State.Fan2SpeedHi = (char)shared->fan2hi;
 
-	for (int i = 0; i < 12; i++)
+	for (int i = 0; i < 12; i++) {
 		this->State.Sensors[i] = (char)shared->sensors[i];
+		// ReadEcStatus never runs in a client, the name pointers stay null without this
+		this->State.SensorName[i] = this->gSensorNames[i];
+	}
 
 	// follow the engine's mode once it has acted on everything we asked for
 	if (shared->ackSeq >= this->LastCmdSeq) {
