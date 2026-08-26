@@ -41,10 +41,19 @@ One executable, two roles:
 - `LidSmartLevel` runs a second smart profile while the lid is closed,
   for machines that work docked.
 
+## Requirements
+
+The EC is reached through TVicPort. The exe refuses to load without
+`TVicPort.dll` — put a copy next to the exe — and the kernel driver
+(`TVicPort64.sys` in `System32\drivers`) must be in place for port
+access. Both ship with the original TPFanControl installer from the
+SourceForge days; note that uninstalling that program removes them
+again, so keep your own copies.
+
 ## Install
 
-1. Put `TPFanControl.exe` and `TPFanControl.ini` in a folder of their
-   own, e.g. `C:\Program Files\TPFanCtrl2`.
+1. Put `TPFanControl.exe`, `TPFanControl.ini` and `TVicPort.dll` in a
+   folder of their own, e.g. `C:\Program Files\TPFanCtrl2`.
 2. Run the exe as administrator once and enable **Start with Windows** in
    the tray menu. That installs the service and a run entry that brings
    up the tray window at logon, without elevation prompts. The same from
