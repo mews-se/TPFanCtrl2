@@ -1301,9 +1301,14 @@ ULONG FANCONTROL::OnTaskbarNotify(LPARAM mp2) {
 	case WM_RBUTTONDOWN: {
 		MENU m(5000);
 
-		if (!this->LockECAccess()) break;
+		// a client has no EC backend, so the hardware toggles belong to the engine
+		if (g_clientMode) {
+			m.DisableMenuItem(5040);
+			m.DisableMenuItem(5060);
+		}
+		else {
+			if (!this->LockECAccess()) break;
 
-		{
 			char testpara;
 			ULONG ok = this->ReadByteFromEC(59, &testpara);
 			if (testpara & 2) m.CheckMenuItem(5060);
@@ -1316,6 +1321,8 @@ ULONG FANCONTROL::OnTaskbarNotify(LPARAM mp2) {
 				ok = this->ReadByteFromEC(59, &testpara);
 				if (testpara & 32) m.CheckMenuItem(5040);
 			}
+
+			this->FreeECAccess();
 		}
 
 		int mode = this->CurrentModeFromDialog();
@@ -1363,8 +1370,6 @@ ULONG FANCONTROL::OnTaskbarNotify(LPARAM mp2) {
 			m.DeleteMenuItem(5070);
 		else
 			m.DeleteMenuItem(5080);
-
-		this->FreeECAccess();
 
 		if (Runs_as_service)
 			m.DeleteMenuItem(5050);
