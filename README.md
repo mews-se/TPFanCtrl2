@@ -72,7 +72,15 @@ The EC is reached through one of two port drivers, tried in this order
    the tray menu. That installs the service and a run entry that brings
    up the tray window at logon, without elevation prompts. The same from
    a prompt: `TPFanControl.exe -i` as administrator.
-3. Adjust `TPFanControl.ini` next to the exe. The ones that matter most:
+3. Windows 11 can silently skip run-key entries at logon — it did on the
+   machine this fork is developed on, twice in a row, with nothing in the
+   event logs to say why. The service is unaffected and keeps the fan
+   from boot either way. If no tray icon appears after a reboot, put a
+   shortcut to the exe in the Startup folder instead (`Win+R` →
+   `shell:startup`, set the program folder as the shortcut's working
+   directory) and disable the run entry under Task Manager's Startup
+   apps, so only one mechanism owns the job.
+4. Adjust `TPFanControl.ini` next to the exe. The ones that matter most:
    - `Level=temp fan hystUp hystDown` — the fan curve, one line per step
    - `IgnoreSensors=` — sensors that should not drive the fan
    - `SingleFan=1` — on machines with one fan
@@ -80,7 +88,8 @@ The EC is reached through one of two port drivers, tried in this order
      for docked use; the default hands the fan to the BIOS on lid close
 
 To uninstall, disable **Start with Windows** in the menu (or run
-`TPFanControl.exe -u` as administrator) and delete the folder.
+`TPFanControl.exe -u` as administrator) and delete the folder, along
+with the Startup shortcut if you made one.
 
 ## Building
 
