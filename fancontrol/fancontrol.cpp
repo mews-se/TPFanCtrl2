@@ -22,7 +22,10 @@
 #include <vector>
 #include <string>
 #include <winevt.h>
+#include <shlobj.h>
 #pragma comment(lib, "wevtapi.lib")
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "uuid.lib")
 
 extern bool g_clientMode;
 extern HANDLE CreateSharedEvent(const char* name);
@@ -998,41 +1001,97 @@ static bool AutostartEnabled() {
 	return on;
 }
 
-static bool SetRunEntry(bool on) {
+// versions up to 2.5.0 used a run key entry, but Windows 11 was seen
+// skipping those at logon with nothing logged about why, so the Startup
+// folder shortcut owns the job now and any leftover entry is removed on
+// either direction of the toggle
+static void DeleteLegacyRunEntry() {
 	HKEY key;
 	if (::RegOpenKeyEx(HKEY_CURRENT_USER, RUN_KEY, 0, KEY_SET_VALUE, &key) != ERROR_SUCCESS)
+		return;
+
+	::RegDeleteValue(key, "TPFanControl");
+	::RegCloseKey(key);
+}
+
+static bool StartupShortcutPath(char* path, size_t size) {
+	if (::SHGetFolderPathA(NULL, CSIDL_STARTUP, NULL, SHGFP_TYPE_CURRENT, path) != S_OK)
 		return false;
 
-	LONG rc;
-	if (on) {
-		char exe[MAX_PATH], quoted[MAX_PATH + 2];
-		::GetModuleFileName(NULL, exe, MAX_PATH);
-		sprintf_s(quoted, sizeof(quoted), "\"%s\"", exe);
-		rc = ::RegSetValueEx(key, "TPFanControl", 0, REG_SZ,
-			(const BYTE*)quoted, (DWORD)strlen(quoted) + 1);
-	}
-	else {
-		rc = ::RegDeleteValue(key, "TPFanControl");
-		if (rc == ERROR_FILE_NOT_FOUND)
-			rc = ERROR_SUCCESS;
+	return strcat_s(path, size, "\\TPFanControl.lnk") == 0;
+}
+
+static bool CreateStartupShortcut() {
+	char lnk[MAX_PATH + 32];
+	if (!StartupShortcutPath(lnk, sizeof(lnk)))
+		return false;
+
+	char exe[MAX_PATH];
+	::GetModuleFileName(NULL, exe, MAX_PATH);
+
+	// the shortcut carries the working directory, so the ini and the log
+	// resolve to the program folder no matter who launches it
+	char dir[MAX_PATH];
+	strcpy_s(dir, sizeof(dir), exe);
+	char* slash = strrchr(dir, '\\');
+	if (slash) *slash = 0;
+
+	const HRESULT com = ::CoInitialize(NULL);
+
+	IShellLinkA* link = NULL;
+	bool ok = false;
+
+	if (SUCCEEDED(::CoCreateInstance(CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER,
+			IID_IShellLinkA, (void**)&link))) {
+		link->SetPath(exe);
+		link->SetWorkingDirectory(dir);
+		link->SetDescription("TPFanControl tray");
+
+		IPersistFile* file = NULL;
+		if (SUCCEEDED(link->QueryInterface(IID_IPersistFile, (void**)&file))) {
+			wchar_t wlnk[MAX_PATH + 32];
+			::MultiByteToWideChar(CP_ACP, 0, lnk, -1, wlnk, MAX_PATH + 32);
+			ok = SUCCEEDED(file->Save(wlnk, TRUE));
+			file->Release();
+		}
+
+		link->Release();
 	}
 
-	::RegCloseKey(key);
+	if (SUCCEEDED(com))
+		::CoUninitialize();
 
-	return rc == ERROR_SUCCESS;
+	return ok;
+}
+
+static bool DeleteStartupShortcut() {
+	char lnk[MAX_PATH + 32];
+	if (!StartupShortcutPath(lnk, sizeof(lnk)))
+		return false;
+
+	if (::DeleteFileA(lnk))
+		return true;
+
+	return ::GetLastError() == ERROR_FILE_NOT_FOUND;
+}
+
+static bool SetStartupShortcut(bool on) {
+	DeleteLegacyRunEntry();
+
+	return on ? CreateStartupShortcut() : DeleteStartupShortcut();
 }
 
 static bool SetAutostart(bool on) {
-	// the run entry is this user's own, the service needs elevation
+	// the shortcut is this user's own, the service needs elevation
 	bool svc = IsElevated()
 		? (on ? InstallService(true) : UninstallService(true)) == 0
 		: RunSelfElevated(on ? "-i -q" : "-u -q", true);
 
-	// a run entry with no service behind it would prompt for elevation at every logon
+	// a shortcut with no service behind it would prompt for elevation at every logon
 	if (on)
-		return svc && SetRunEntry(true);
+		return svc && SetStartupShortcut(true);
 
-	return SetRunEntry(false) && svc;
+	return SetStartupShortcut(false) && svc;
 }
 
 //-------------------------------------------------------------------------
