@@ -142,7 +142,7 @@ bool FANCONTROL::HandleData(void) {
 		else {
 			if (!(SlimDialog && StayOnTop))
 				sprintf_s(obuf2 + strlen(obuf2), sizeof(obuf2) - strlen(obuf2), " Non Bios");
-			sprintf_s(title2 + strlen(title2), sizeof(title2) - strlen(title2), " Fan %d (%s)", fanctrl & 0x3F, this->CurrentModeFromDialog() == 2 ? "Smart" : "Fixed");
+			sprintf_s(title2 + strlen(title2), sizeof(title2) - strlen(title2), " Fan %d (%s)", (fanctrl & 0x40) ? 64 : fanctrl & 0x3F, this->CurrentModeFromDialog() == 2 ? "Smart" : "Fixed");
 		}
 	}
 	else {
@@ -152,8 +152,8 @@ bool FANCONTROL::HandleData(void) {
 			strcat_s(title2, sizeof(title2), " Default Fan");
 		}
 		else {
-			sprintf_s(obuf2 + strlen(obuf2), sizeof(obuf2) - strlen(obuf2), "Fan Level %d, Non Bios)", fanctrl & 0x3F);
-			sprintf_s(title2 + strlen(title2), sizeof(title2) - strlen(title2), " Fan %d (%s)", fanctrl & 0x3F, this->CurrentModeFromDialog() == 2 ? "Smart" : "Fixed");
+			sprintf_s(obuf2 + strlen(obuf2), sizeof(obuf2) - strlen(obuf2), "Fan Level %d, Non Bios)", (fanctrl & 0x40) ? 64 : fanctrl & 0x3F);
+			sprintf_s(title2 + strlen(title2), sizeof(title2) - strlen(title2), " Fan %d (%s)", (fanctrl & 0x40) ? 64 : fanctrl & 0x3F, this->CurrentModeFromDialog() == 2 ? "Smart" : "Fixed");
 		}
 	}
 
