@@ -33,6 +33,9 @@
     <ClCompile Include="misc.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="portaccess.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="portio.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -54,6 +57,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="fancontrol.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="portaccess.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="res\resource.h">
@@ -120,9 +126,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="res\resource" />
-  </ItemGroup>
-  <ItemGroup>
-    <Library Include="TVicPort.lib" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="res\xp-manifest.txt" />

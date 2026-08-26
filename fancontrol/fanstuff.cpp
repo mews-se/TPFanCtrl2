@@ -18,7 +18,7 @@
 #include "_prec.h"
 #include "fancontrol.h"
 #include "tools.h"
-#include "TVicPort.h"
+#include "portaccess.h"
 #include "sharedstate.h"
 
 extern bool g_clientMode;
@@ -810,6 +810,12 @@ bool FANCONTROL::ReadEcRaw(FCSTATE* pfcstate) {
 		}
 	}
 	else {
+		// the TWR mailbox lives outside the ports the PawnIO module exposes
+		if (!PortAccess_AllowsPort(0x1610)) {
+			this->Trace("UseTWR needs a port backend that reaches 0x1600-0x161f, use TVicPort or disable UseTWR");
+			return false;
+		}
+
 		char data = -1;
 		char dataOut[16] = { };
 		int iOK = false;
@@ -828,27 +834,27 @@ bool FANCONTROL::ReadEcRaw(FCSTATE* pfcstate) {
 		}
 
 		for (iTime = 0; iTime < iTimeoutBuf; iTime += iTick) {    // wait for ec ready
-			data = (char)ReadPort(0x1604) & 0xff;                // or timeout iTimeoutBuf = 1000
+			data = (char)PortAccess_ReadByte(0x1604) & 0xff;                // or timeout iTimeoutBuf = 1000
 			if (!data)                                            // ec is ready: ctrlprt = 0
 				break;
 			if (data & 0x50)                                    // some unrequested outputis waiting
-				ReadPort(0x161f);                                // clear data output
+				PortAccess_ReadByte(0x161f);                                // clear data output
 			::Sleep(iTick);
 		}
 
-		WritePort(0x1610, 0x20);                            // tell them we want to read
-		data = (char)ReadPort(0x1604) & 0xff;
+		PortAccess_WriteByte(0x1610, 0x20);                            // tell them we want to read
+		data = (char)PortAccess_ReadByte(0x1604) & 0xff;
 		if (!(data & 0x20))                                    // ec is not ready
 			goto retry;
 
 		for (int i = 1; i < 15; i++) {
-			WritePort(0x1610 + i, 0x00);
+			PortAccess_WriteByte(0x1610 + i, 0x00);
 		}
 
-		WritePort(0x161f, 0x00);
+		PortAccess_WriteByte(0x161f, 0x00);
 
 		for (iTime = 0; iTime < iTimeoutBuf; iTime++) {            // wait for full buffers to clear
-			data = (char)ReadPort(0x1604) & 0xff;                // or timeout iTimeoutBuf = 1000
+			data = (char)PortAccess_ReadByte(0x1604) & 0xff;                // or timeout iTimeoutBuf = 1000
 			if (data == 0x50)
 				break;
 		}
@@ -857,7 +863,7 @@ bool FANCONTROL::ReadEcRaw(FCSTATE* pfcstate) {
 			goto retry;
 
 		for (int i = 0; i < 16; i++) {
-			dataOut[i] = (char)ReadPort(0x1610 + i) & 0xff;
+			dataOut[i] = (char)PortAccess_ReadByte(0x1610 + i) & 0xff;
 		}
 
 		pfcstate->SensorAddr[0] = 0x78;

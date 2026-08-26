@@ -159,6 +159,10 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
       </PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="portaccess.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Use</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Use</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="portio.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Use</PrecompiledHeader>
@@ -177,6 +181,7 @@
     <ClInclude Include="approot.h" />
     <ClInclude Include="dynamicicon.h" />
     <ClInclude Include="fancontrol.h" />
+    <ClInclude Include="portaccess.h" />
     <ClInclude Include="res\resource.h" />
     <ClInclude Include="sharedstate.h" />
     <ClInclude Include="SystemTraySDK.h" />
@@ -204,9 +209,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="res\resource" />
-  </ItemGroup>
-  <ItemGroup>
-    <Library Include="TVicPort.lib" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="res\xp-manifest.txt" />

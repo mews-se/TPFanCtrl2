@@ -20,7 +20,7 @@
 
 #include "_prec.h"
 #include "fancontrol.h"
-#include "TVicPort.h"
+#include "portaccess.h"
 
 // Registers of the embedded controller
 //
@@ -97,6 +97,15 @@ static void
 InitializeEcPorts(int& ctrlPort, int& dataPort) {
 	if (ctrlPort != 0 && dataPort != 0) return;
 
+	// first layout the backend can reach; PawnIO only covers 0x62/0x66
+	for (const auto& layout : EC_PORT_LAYOUTS) {
+		if (!PortAccess_AllowsPort(static_cast<USHORT>(layout.ctrl))) continue;
+
+		ctrlPort = layout.ctrl;
+		dataPort = layout.data;
+		return;
+	}
+
 	ctrlPort = EC_PORT_LAYOUTS[0].ctrl;
 	dataPort = EC_PORT_LAYOUTS[0].data;
 }
@@ -130,12 +139,12 @@ BuildEcPortAttempts(
 		InitializeEcPorts(pThis->EC_CTRL, pThis->EC_DATA);
 		sprintf_s(traceText, traceSize,
 			"Trying %s (ctrl=0x%04X data=0x%04X) first",
-			EC_PORT_LAYOUTS[0].name, EC_PORT_LAYOUTS[0].ctrl, EC_PORT_LAYOUTS[0].data);
+			GetEcLayoutName(pThis->EC_CTRL, pThis->EC_DATA), pThis->EC_CTRL, pThis->EC_DATA);
 		pThis->Trace(traceText);
 	}
 
 	// First try currently selected ports
-	if (attemptCount < maxAttempts) {
+	if (attemptCount < maxAttempts && PortAccess_AllowsPort(static_cast<USHORT>(pThis->EC_CTRL))) {
 		attempts[attemptCount++] = {
 			pThis->EC_CTRL,
 			pThis->EC_DATA,
@@ -143,9 +152,10 @@ BuildEcPortAttempts(
 		};
 	}
 
-	// Then try the other known layouts
+	// Then try the other known layouts the backend can reach
 	for (const auto& layout : EC_PORT_LAYOUTS) {
 		if (layout.ctrl == pThis->EC_CTRL && layout.data == pThis->EC_DATA) continue;
+		if (!PortAccess_AllowsPort(static_cast<USHORT>(layout.ctrl))) continue;
 		if (attemptCount >= maxAttempts) break;
 		attempts[attemptCount++] = layout;
 	}
@@ -163,7 +173,7 @@ WaitForAllClear(USHORT port, UCHAR flags, int timeout = DEFAULT_TIMEOUT_MS) {
 	const DWORD start = ::GetTickCount();
 
 	for (;;) {
-		const UCHAR data = ReadPort(port);
+		const UCHAR data = PortAccess_ReadByte(port);
 		if ((data & flags) == 0) return true;
 		if ((::GetTickCount() - start) >= static_cast<DWORD>(timeout)) return false;
 		::Sleep(DEFAULT_SLEEP_TICKS);
@@ -178,7 +188,7 @@ WaitForAnySet(USHORT port, UCHAR flags, int timeout = DEFAULT_TIMEOUT_MS) {
 	const DWORD start = ::GetTickCount();
 
 	for (;;) {
-		const UCHAR data = ReadPort(port);
+		const UCHAR data = PortAccess_ReadByte(port);
 		if ((data & flags) != 0) return true;
 		if ((::GetTickCount() - start) >= static_cast<DWORD>(timeout)) return false;
 		::Sleep(DEFAULT_SLEEP_TICKS);
@@ -191,11 +201,11 @@ WaitForAnySet(USHORT port, UCHAR flags, int timeout = DEFAULT_TIMEOUT_MS) {
 static void
 DrainOutputBuffer(USHORT ctrlPort, USHORT dataPort) {
 	for (int i = 0; i < RECOVERY_DRAIN_READS; i++) {
-		const UCHAR status = ReadPort(ctrlPort);
+		const UCHAR status = PortAccess_ReadByte(ctrlPort);
 
 		if ((status & ACPI_EC_FLAG_OBF) == 0) break;
 
-		(void)ReadPort(dataPort);
+		(void)PortAccess_ReadByte(dataPort);
 
 		::Sleep(DEFAULT_SLEEP_TICKS);
 	}
@@ -209,10 +219,10 @@ WaitForControllerReady(USHORT ctrlPort, USHORT dataPort, int timeout = DEFAULT_T
 	const DWORD start = ::GetTickCount();
 
 	for (;;) {
-		const UCHAR status = ReadPort(ctrlPort);
+		const UCHAR status = PortAccess_ReadByte(ctrlPort);
 
 		if ((status & ACPI_EC_FLAG_OBF) != 0) {
-			(void)ReadPort(dataPort);
+			(void)PortAccess_ReadByte(dataPort);
 		}
 		else if ((status & ACPI_EC_FLAG_IBF) == 0) {
 			return true;
@@ -231,7 +241,7 @@ static void
 TraceEcTimeout(const EcOpContext& ctx, int step, bool drain) {
 	if (drain) DrainOutputBuffer(ctx.ctrlPort, ctx.dataPort);
 
-	const UCHAR status = ReadPort(ctx.ctrlPort);
+	const UCHAR status = PortAccess_ReadByte(ctx.ctrlPort);
 
 	if (ctx.ecData >= 0) {
 		sprintf_s(ctx.traceText, ctx.traceSize,
@@ -264,7 +274,7 @@ SendEcCommandAndAddress(const EcOpContext& ctx, UCHAR command) {
 	}
 
 	// send command byte
-	WritePort(ctx.ctrlPort, command);
+	PortAccess_WriteByte(ctx.ctrlPort, command);
 
 	// wait for IBF to clear (command byte removed from EC's input queue)
 	if (!WaitForAllClear(ctx.ctrlPort, ACPI_EC_FLAG_IBF)) {
@@ -273,7 +283,7 @@ SendEcCommandAndAddress(const EcOpContext& ctx, UCHAR command) {
 	}
 
 	// send address byte
-	WritePort(ctx.dataPort, ctx.ecOffset);
+	PortAccess_WriteByte(ctx.dataPort, ctx.ecOffset);
 
 	// wait for IBF to clear (address byte removed from EC's input queue)
 	if (!WaitForAllClear(ctx.ctrlPort, ACPI_EC_FLAG_IBF)) {
@@ -301,7 +311,7 @@ ExecuteEcRead(const EcOpContext& ctx, char& outData) {
 		}
 	}
 
-	outData = static_cast<char>(ReadPort(ctx.dataPort));
+	outData = static_cast<char>(PortAccess_ReadByte(ctx.dataPort));
 	return true;
 }
 
@@ -315,7 +325,7 @@ ExecuteEcWrite(const EcOpContext& ctx) {
 		return false;
 
 	// perform the write operation
-	WritePort(ctx.dataPort, static_cast<UCHAR>(ctx.ecData));
+	PortAccess_WriteByte(ctx.dataPort, static_cast<UCHAR>(ctx.ecData));
 
 	// wait for IBF to clear (data byte removed from EC's input queue)
 	if (!WaitForAllClear(ctx.ctrlPort, ACPI_EC_FLAG_IBF)) {

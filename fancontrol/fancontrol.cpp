@@ -18,6 +18,7 @@
 #include "fancontrol.h"
 #include "taskbartexticon.h"
 #include "sharedstate.h"
+#include "portaccess.h"
 #include <vector>
 #include <string>
 #include <winevt.h>
@@ -280,6 +281,12 @@ void FANCONTROL::HandleStartupDelay() {
 
 	sprintf_s(bufsec, sizeof(bufsec), "Windows uptime since boot %d sec., SecWinUptime= %d sec.", tickCount / 1000, SecWinUptime);
 	this->Trace(bufsec);
+
+	// the port backend opened before tracing existed, drain its messages
+	if (!g_clientMode) {
+		for (int i = 0; i < PortAccess_InitMessageCount(); i++)
+			this->Trace(PortAccess_InitMessage(i));
+	}
 
 	if ((SecStartDelay > 0) && ((tickCount / 1000) <= (DWORD)SecWinUptime)) {
 		sprintf_s(bufsec, sizeof(bufsec), "Delay startup to allow windows to settle, SecStartDelay= %d sec.", SecStartDelay);

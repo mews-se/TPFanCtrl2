@@ -1,14 +1,13 @@
 #include "_prec.h"
 #include "approot.h"
 #include "fancontrol.h"
-#include "TVicPort.h"
+#include "portaccess.h"
 #include "sharedstate.h"
 
-// unchanged from what the port open here always did, just named so the one
-// place that cares about the result reads the same as the rest of the startup
+// the retry window covers drivers that come up late during boot
 static bool OpenPortDriver() {
     for (int i = 0; i < 180; i++) {
-        if (OpenTVicPort())
+        if (PortAccess_Open())
             return true;
 
         ::Sleep(1000);
@@ -533,14 +532,17 @@ void WorkerThread(void *dummy) {
 	else if (!g_isService) {
 		// no message box in session 0, nobody can answer it
 		::MessageBox(HWND_DESKTOP,
-					"Error during initialization of Port Driver.\r\n"
-					"(tvicport.sys missing in app folder or failed to load)",
+					"No port backend could be opened.\r\n"
+					"\r\n"
+					"Install PawnIO (pawnio.eu) and keep LpcACPIEC.bin next to\r\n"
+					"the program, or provide TVicPort.dll with its driver on\r\n"
+					"systems without memory integrity.",
 					"Fan Control",
 					MB_ICONERROR | MB_OK | MB_SETFOREGROUND);
 	}
 
 	SharedState_Close();
-	CloseTVicPort();
+	PortAccess_Close();
 
 	if (running) {
 		::ReleaseMutex(running);
