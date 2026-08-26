@@ -18,6 +18,7 @@
 #include "_prec.h"
 #include "tools.h"
 #include "fancontrol.h"
+#include "sharedstate.h"
 
 
 //-------------------------------------------------------------------------
@@ -805,7 +806,7 @@ FANCONTROL::IsMinimized(void) const {
 //-------------------------------------------------------------------------
 void
 FANCONTROL::Trace(const char* text) {
-	char trace[16384] = "", datebuf[128] = "", line[512] = "", linecsv[512] = "";
+	char datebuf[128] = "", line[512] = "";
 
 	this->CurrentDateTimeLocalized(datebuf, sizeof(datebuf));
 
@@ -813,6 +814,36 @@ FANCONTROL::Trace(const char* text) {
 		sprintf_s(line, sizeof(line), "[%s] %s\r\n", datebuf, text);	// probably acpi reading conflict
 	else
 		strcpy_s(line, sizeof(line), "\r\n");
+
+	// publish to the shared ring so client windows can mirror the engine log
+	extern bool g_clientMode;
+	FCSHARED* shared = SharedState();
+	if (!g_clientMode && shared) {
+		LONG seq = ::InterlockedIncrement(&shared->traceSeq);
+		strncpy_s(shared->traceLines[seq % ARRAYMAX(shared->traceLines)],
+			sizeof(shared->traceLines[0]), line, _TRUNCATE);
+	}
+
+	// write logfile
+	if (this->Log2File == 1) {
+		FILE* flog;
+		errno_t errflog = fopen_s(&flog, "TPFanControl.log", "ab");
+		if (!errflog) {
+			//TODO: fwrite_s
+			fwrite(line, strlen(line), 1, flog);
+			fclose(flog);
+		}
+	}
+
+	this->TraceAppend(line);
+}
+
+//-------------------------------------------------------------------------
+//  append one already formatted line to the log window
+//-------------------------------------------------------------------------
+void
+FANCONTROL::TraceAppend(const char* line) {
+	char trace[16384] = "";
 
 	::GetDlgItemText(this->hwndDialog, 9200, trace, sizeof(trace) - strlen(line) - 1);
 
@@ -830,17 +861,6 @@ FANCONTROL::Trace(const char* text) {
 		}
 
 		p--;
-	}
-
-	// write logfile
-	if (this->Log2File == 1) {
-		FILE* flog;
-		errno_t errflog = fopen_s(&flog, "TPFanControl.log", "ab");
-		if (!errflog) {
-			//TODO: fwrite_s
-			fwrite(line, strlen(line), 1, flog);
-			fclose(flog);
-		}
 	}
 
 	// redisplay log and scroll to bottom

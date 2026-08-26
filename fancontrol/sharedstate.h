@@ -33,6 +33,9 @@ struct FCSHARED {
 	int cmdMode;              // mode the user picked
 	int cmdSmart;             // smart profile the user picked, -1 for none
 	char cmdLevelText[16];    // manual level as typed, parsed by the engine
+
+	volatile LONG traceSeq;   // bumped by the engine for every line below
+	char traceLines[48][160]; // ring of engine log lines, mirrored by clients
 };
 
 bool SharedState_Create();   // engine side, fails if it cannot be created

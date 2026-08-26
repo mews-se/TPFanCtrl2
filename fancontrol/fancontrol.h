@@ -167,6 +167,7 @@ protected:
 	HANDLE hLockS;
 	LONG LastCmdSeq;    // engine: last client command acted on
 	LONG LastStateSeq;  // client: last engine publication drawn
+	LONG LastTraceSeq;  // client: last engine log line mirrored
 	BOOL Closing;
 	MUTEXSEM EcAccess;
 	bool m_needClose;
@@ -316,6 +317,8 @@ public:
 	void UpdateTempDisplay(void);
 
 	void Trace(const char* text);
+
+	void TraceAppend(const char* line);
 
 	bool PollECByte(char offset, char* out, int expected, int timeoutMs);
 };

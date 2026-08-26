@@ -112,6 +112,7 @@ FANCONTROL::FANCONTROL(HINSTANCE hinstapp)
 	m_needClose(false),
 	LastCmdSeq(0),
 	LastStateSeq(0),
+	LastTraceSeq(0),
 	ppTbTextIcon(NULL),
 	pTextIconMutex(new MUTEXSEM(0, "Global\\TPFanControl_ppTbTextIcon")) {
 
@@ -1454,7 +1455,21 @@ void FANCONTROL::SwitchSmartLevel(int level) {
 //-------------------------------------------------------------------------
 void FANCONTROL::PullSharedState() {
 	FCSHARED* shared = SharedState();
-	if (!shared || shared->stateSeq == this->LastStateSeq)
+	if (!shared)
+		return;
+
+	// mirror engine log lines even when the state itself has not moved
+	const LONG ringmax = (LONG)ARRAYMAX(shared->traceLines);
+	LONG traceSeq = shared->traceSeq;
+	if (traceSeq > this->LastTraceSeq) {
+		LONG from = traceSeq - this->LastTraceSeq > ringmax
+			? traceSeq - ringmax + 1 : this->LastTraceSeq + 1;
+		for (LONG s = from; s <= traceSeq; s++)
+			this->TraceAppend(shared->traceLines[s % ringmax]);
+		this->LastTraceSeq = traceSeq;
+	}
+
+	if (shared->stateSeq == this->LastStateSeq)
 		return;
 
 	this->LastStateSeq = shared->stateSeq;
