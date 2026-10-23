@@ -5,7 +5,7 @@
 release [0.2.10](https://github.com/namazso/PawnIO.Modules/releases/tag/0.2.10),
 unmodified. It executes inside the PawnIO driver and exposes byte reads
 and writes on the classic ACPI EC ports 0x62/0x66 only. The module is
-LGPL-2.1 — see `COPYING`; source in the repository above.
+LGPL-2.1, see `COPYING`; source in the repository above.
 
 Deploy it next to `TPFanControl.exe`. The PawnIO driver itself is not
 redistributed here; users install it from [pawnio.eu](https://pawnio.eu)

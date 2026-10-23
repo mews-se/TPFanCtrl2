@@ -3,7 +3,7 @@
 Fan control for ThinkPads running Windows 10/11.
 
 This repository carries on FanDjango's TPFanCtrl2 line, which was archived
-in August 2026. The full history is preserved here — every branch and tag,
+in August 2026. The full history is preserved here: every branch and tag,
 and the release binaries from V2.3.4 through V2.3.23 mirrored under
 [Releases](../../releases).
 
@@ -36,7 +36,7 @@ One executable, two roles:
 - The tray menu no longer competes with the engine for the EC mutex;
   the hardware toggles are grayed out in a client.
 - `ErraticSensorGuard` quarantines sensors that swing tens of degrees
-  back and forth between cycles — multiplexed EC registers on newer
+  back and forth between cycles: multiplexed EC registers on newer
   machines that hold no temperature.
 - `LidSmartLevel` runs a second smart profile while the lid is closed,
   for machines that work docked.
@@ -51,14 +51,14 @@ One executable, two roles:
 The EC is reached through one of two port drivers, tried in this order
 (override with `PortBackend=` in the ini):
 
-- **PawnIO** — install it from [pawnio.eu](https://pawnio.eu) or
+- **PawnIO**: install it from [pawnio.eu](https://pawnio.eu) or
   `winget install namazso.PawnIO`, and keep `LpcACPIEC.bin` (bundled
   here under `fancontrol/pawnio/`, part of the release zip) next to the
   exe. The driver is WHQL-signed and works with memory integrity (HVCI)
-  enabled — this is the right choice on any current Windows 11 machine,
+  enabled; this is the right choice on any current Windows 11 machine,
   where TVicPort's driver is refused. The signed module reaches the EC
   through the classic ports 0x62/0x66.
-- **TVicPort** — put `TVicPort.dll` next to the exe with its kernel
+- **TVicPort**: put `TVicPort.dll` next to the exe with its kernel
   driver (`TVicPort64.sys` in `System32\drivers`) in place. Both ship
   with the original TPFanControl installer from the SourceForge days;
   uninstalling that program removes them again, so keep your own
@@ -75,13 +75,13 @@ The EC is reached through one of two port drivers, tried in this order
    Startup folder that brings up the tray window at logon, without
    elevation prompts. The same from a prompt: `TPFanControl.exe -i` as
    administrator. Up to 2.5.0 the toggle wrote a run key entry instead,
-   which Windows 11 was seen silently skipping at logon — flipping the
+   which Windows 11 was seen silently skipping at logon. Flipping the
    toggle in either direction also cleans up such a leftover entry.
 3. Adjust `TPFanControl.ini` next to the exe. The ones that matter most:
-   - `Level=temp fan hystUp hystDown` — the fan curve, one line per step
-   - `IgnoreSensors=` — sensors that should not drive the fan
-   - `SingleFan=1` — on machines with one fan
-   - `PowerSuspendMode=2` — keep controlling the fan with the lid closed,
+   - `Level=temp fan hystUp hystDown`: the fan curve, one line per step
+   - `IgnoreSensors=`: sensors that should not drive the fan
+   - `SingleFan=1`: on machines with one fan
+   - `PowerSuspendMode=2`: keep controlling the fan with the lid closed,
      for docked use; the default hands the fan to the BIOS on lid close
 
 To uninstall, disable **Start with Windows** in the menu (or run
@@ -108,5 +108,5 @@ its daily driver. For models confirmed on earlier versions, see the
 
 ## License
 
-Public domain (Unlicense), inherited from upstream. No warranty — this
+Public domain (Unlicense), inherited from upstream. No warranty: this
 program writes to your embedded controller, use it at your own risk.
