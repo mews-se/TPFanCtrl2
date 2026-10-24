@@ -39,7 +39,8 @@ One executable, two roles:
   back and forth between cycles: multiplexed EC registers on newer
   machines that hold no temperature.
 - `LidSmartLevel` runs a second smart profile while the lid is closed,
-  for machines that work docked.
+  for machines that work docked. It needs `PowerSuspendMode=2`, smart
+  mode and `Level2=` lines in the ini.
 - The EC is reached through [PawnIO](https://pawnio.eu), so fan control
   works with memory integrity (HVCI) enabled. TVicPort remains as a
   fallback, loaded dynamically only when needed.
@@ -53,11 +54,11 @@ The EC is reached through one of two port drivers, tried in this order
 
 - **PawnIO**: install it from [pawnio.eu](https://pawnio.eu) or
   `winget install namazso.PawnIO`, and keep `LpcACPIEC.bin` (bundled
-  here under `fancontrol/pawnio/`, part of the release zip) next to the
-  exe. The driver is WHQL-signed and works with memory integrity (HVCI)
-  enabled; this is the right choice on any current Windows 11 machine,
-  where TVicPort's driver is refused. The signed module reaches the EC
-  through the classic ports 0x62/0x66.
+  here under `fancontrol/pawnio/`, a separate file on each release) next
+  to the exe. The driver is WHQL-signed and works with memory integrity
+  (HVCI) enabled; this is the right choice on any current Windows 11
+  machine, where TVicPort's driver is refused. The signed module reaches
+  the EC through the classic ports 0x62/0x66.
 - **TVicPort**: put `TVicPort.dll` next to the exe with its kernel
   driver (`TVicPort64.sys` in `System32\drivers`) in place. Both ship
   with the original TPFanControl installer from the SourceForge days;
@@ -71,12 +72,13 @@ The EC is reached through one of two port drivers, tried in this order
    `TVicPort.dll`) in a folder of their own, e.g.
    `C:\Program Files\TPFanCtrl2`.
 2. Run the exe as administrator once and enable **Start with Windows** in
-   the tray menu. That installs the service and puts a shortcut in your
-   Startup folder that brings up the tray window at logon, without
-   elevation prompts. The same from a prompt: `TPFanControl.exe -i` as
-   administrator. Up to 2.5.0 the toggle wrote a run key entry instead,
-   which Windows 11 was seen silently skipping at logon. Flipping the
-   toggle in either direction also cleans up such a leftover entry.
+   the tray menu. That installs and starts the service and puts a
+   shortcut in your Startup folder that brings up the tray window at
+   logon, without elevation prompts. `TPFanControl.exe -i` as
+   administrator only installs and starts the service, no shortcut. Up
+   to 2.5.0 the toggle wrote a run key entry instead, which Windows 11
+   was seen silently skipping at logon. Flipping the toggle in either
+   direction also cleans up such a leftover entry.
 3. Adjust `TPFanControl.ini` next to the exe. The ones that matter most:
    - `Level=temp fan hystUp hystDown`: the fan curve, one line per step
    - `IgnoreSensors=`: sensors that should not drive the fan
@@ -84,8 +86,9 @@ The EC is reached through one of two port drivers, tried in this order
    - `PowerSuspendMode=2`: keep controlling the fan with the lid closed,
      for docked use; the default hands the fan to the BIOS on lid close
 
-To uninstall, disable **Start with Windows** in the menu (or run
-`TPFanControl.exe -u` as administrator) and delete the folder.
+To uninstall, disable **Start with Windows** in the menu and delete the
+folder. `TPFanControl.exe -u` as administrator only removes the service
+and leaves `TPFanControl.lnk` in your Startup folder, so delete that too.
 
 ## Building
 
@@ -108,5 +111,7 @@ its daily driver. For models confirmed on earlier versions, see the
 
 ## License
 
-Public domain (Unlicense), inherited from upstream. No warranty: this
-program writes to your embedded controller, use it at your own risk.
+Public domain (Unlicense), inherited from upstream. `LpcACPIEC.bin` is
+PawnIO's module and stays LGPL-2.1, see `fancontrol/pawnio/COPYING`.
+No warranty: this program writes to your embedded controller, use it at
+your own risk.
