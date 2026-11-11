@@ -1,0 +1,769 @@
+diff --git a/CONTRIBUTION_NOTES.md b/CONTRIBUTION_NOTES.md
+new file mode 100644
+index 0000000..c3d4618
+--- /dev/null
++++ b/CONTRIBUTION_NOTES.md
+@@ -0,0 +1,37 @@
++# TPFanCtrl2 2.5.1-fix.6 — proposed upstream contribution
++
++This is an **unofficial** contribution based on the user-supplied `TPFanCtrl2-main.zip` from `mews-se/TPFanCtrl2`. It is not an upstream release.
++
++## Goals
++
++- Preserve the existing UI, configuration format, port backends, and Visual Studio project.
++- Address failed EC temperature reads and resume handling.
++- Allow building the existing main `TPFanControl.exe` with Code::Blocks 20.03 / MinGW-w64 x64.
++
++## Source code changes
++
++- `fancontrol/fanstuff.cpp`: validate usable temperature before Smart regulation; compare CPU values in paired samples; avoid treating a zero sensor value as an idle CPU; adjust level 64 spin-up threshold (4000 to 3200 RPM). The 3200 RPM policy adjustment is **separate from** the safety fix and should be reviewed independently by maintainers.
++- `fancontrol/fancontrol.cpp` and `.h`: introduce delayed resume validation and restored mode state; avoid blocking Event Log callback with sleep; avoid truncating a pointer passed to the worker thread.
++- `fancontrol/misc.cpp`: use a correct Windows thread start routine signature.
++- `fancontrol/winstuff.cpp`, `.h`: pointer-width-safe Windows handle casts.
++- `*/SystemTraySDK.cpp`: match `OnTrayNotification(WPARAM, LPARAM)` signature on x64.
++- `fancontrol/_prec.h`, `fancontrol/mingw_compat.h`: MinGW compatibility declarations.
++- `fancontrol/res/fancontrol.rc`, `fancontrol/fancontrol.h`: unofficial version identification.
++- `TPFanCtrl2.cbp`: Code::Blocks 20.03 project for the *main* executable only. The original Visual Studio solution remains unchanged. The TPFCIcon helper binaries are **not** built by this project.
++
++## Testing and limitations
++
++- Reporter: Lenovo ThinkPad X395, Windows; PawnIO backend.
++- User reported that the main executable compiled in Code::Blocks Debug, with 0 errors and 27 warnings, and started after `LpcACPIEC.bin` and `TPFanControl.ini` were placed alongside it.
++- User reported a successful close-lid/resume test; no detailed logs or multi-device testing provided.
++- Not verified with the maintainer's build pipeline, Visual Studio, other ThinkPad models, both-fan configurations, or a clean MinGW environment.
++- `Debug` / `Release` helper `TPFCIcon` executables are not included. The main program and helper modules may need separate project targets upstream.
++- Treat the resume/sensor changes as candidate fixes that require code review, especially for unusual EC behavior. This patch has not been formally safety-audited.
++
++## How to review
++
++See `changes.patch` in the parent submission ZIP. Apply it to the exact baseline shown in `BASELINE_SHA256.txt`, inspect the diff, and build under Code::Blocks. Maintainers may want to split the patch into (1) EC/suspend fixes, (2) MinGW portability and (3) Code::Blocks project.
++
++No user-specific `TPFanControl.ini`, private paths, third-party driver binaries, or compiled executables are added by this patch. Existing vendor binaries present in the upstream repository remain unchanged.
++
++Public-domain contribution: the upstream repository's terms for contributions apply. The person opening the PR should review and accept those terms themselves.
+diff --git a/TPFCIcon/SystemTraySDK.cpp b/TPFCIcon/SystemTraySDK.cpp
+index 7b64a23..62bd9fa 100644
+--- a/TPFCIcon/SystemTraySDK.cpp
++++ b/TPFCIcon/SystemTraySDK.cpp
+@@ -813,7 +813,7 @@ LRESULT CSystemTray::OnSettingChange(UINT uFlags, LPCTSTR lpszSection)
+ }
+ #endif
+ 
+-LRESULT CSystemTray::OnTrayNotification(UINT wParam, LONG lParam) 
++LRESULT CSystemTray::OnTrayNotification(WPARAM wParam, LPARAM lParam) 
+ {
+     //Return quickly if its not for this tray icon
+     if (wParam != m_tnd.uID)
+diff --git a/TPFCIcon_noballons/SystemTraySDK.cpp b/TPFCIcon_noballons/SystemTraySDK.cpp
+index 7b64a23..62bd9fa 100644
+--- a/TPFCIcon_noballons/SystemTraySDK.cpp
++++ b/TPFCIcon_noballons/SystemTraySDK.cpp
+@@ -813,7 +813,7 @@ LRESULT CSystemTray::OnSettingChange(UINT uFlags, LPCTSTR lpszSection)
+ }
+ #endif
+ 
+-LRESULT CSystemTray::OnTrayNotification(UINT wParam, LONG lParam) 
++LRESULT CSystemTray::OnTrayNotification(WPARAM wParam, LPARAM lParam) 
+ {
+     //Return quickly if its not for this tray icon
+     if (wParam != m_tnd.uID)
+diff --git a/TPFanCtrl2.cbp b/TPFanCtrl2.cbp
+new file mode 100644
+index 0000000..dcf9d21
+--- /dev/null
++++ b/TPFanCtrl2.cbp
+@@ -0,0 +1,100 @@
++<?xml version='1.0' encoding='utf-8'?>
++<CodeBlocks_project_file>
++  <FileVersion major="1" minor="6" />
++  <Project>
++    <Option title="TPFanCtrl2" />
++    <Option pch_mode="2" />
++    <Option compiler="gcc" />
++    <Build>
++      <Target title="Debug">
++        <Option output="Debug/TPFanControl.exe" prefix_auto="0" extension_auto="0" />
++        <Option object_output="Debug/obj" />
++        <Option type="0" />
++        <Option compiler="gcc" />
++        <Compiler>
++          <Add option="-std=gnu++14" />
++          <Add option="-funsigned-char" />
++          <Add option="-DWIN32" />
++          <Add option="-D_WINDOWS" />
++          <Add option="-D_WIN32_WINNT=0x0601" />
++          <Add option="-g" />
++          <Add option="-D_DEBUG" />
++        </Compiler>
++        <Linker>
++          <Add library="comctl32" />
++          <Add library="wevtapi" />
++          <Add library="ole32" />
++          <Add library="uuid" />
++          <Add library="shell32" />
++          <Add library="advapi32" />
++          <Add library="user32" />
++          <Add library="gdi32" />
++          <Add library="comdlg32" />
++          <Add library="version" />
++          <Add library="shlwapi" />
++          <Add library="psapi" />
++        </Linker>
++      </Target>
++      <Target title="Release">
++        <Option output="Release/TPFanControl.exe" prefix_auto="0" extension_auto="0" />
++        <Option object_output="Release/obj" />
++        <Option type="0" />
++        <Option compiler="gcc" />
++        <Compiler>
++          <Add option="-std=gnu++14" />
++          <Add option="-funsigned-char" />
++          <Add option="-DWIN32" />
++          <Add option="-D_WINDOWS" />
++          <Add option="-D_WIN32_WINNT=0x0601" />
++          <Add option="-O2" />
++          <Add option="-DNDEBUG" />
++        </Compiler>
++        <Linker>
++          <Add library="comctl32" />
++          <Add library="wevtapi" />
++          <Add library="ole32" />
++          <Add library="uuid" />
++          <Add library="shell32" />
++          <Add library="advapi32" />
++          <Add library="user32" />
++          <Add library="gdi32" />
++          <Add library="comdlg32" />
++          <Add library="version" />
++          <Add library="shlwapi" />
++          <Add library="psapi" />
++        </Linker>
++      </Target>
++    </Build>
++    <Compiler>
++      <Add directory="fancontrol" />
++      <Add directory="fancontrol/res" />
++    </Compiler>
++    <Unit filename="fancontrol/SystemTraySDK.cpp" />
++    <Unit filename="fancontrol/_prec.cpp" />
++    <Unit filename="fancontrol/approot.cpp" />
++    <Unit filename="fancontrol/dynamicicon.cpp" />
++    <Unit filename="fancontrol/fancontrol.cpp" />
++    <Unit filename="fancontrol/fanstuff.cpp" />
++    <Unit filename="fancontrol/misc.cpp" />
++    <Unit filename="fancontrol/portaccess.cpp" />
++    <Unit filename="fancontrol/portio.cpp" />
++    <Unit filename="fancontrol/sharedstate.cpp" />
++    <Unit filename="fancontrol/winstuff.cpp" />
++    <Unit filename="fancontrol/SystemTraySDK.h" />
++    <Unit filename="fancontrol/TVicPort.h" />
++    <Unit filename="fancontrol/TaskbarTextIcon.h" />
++    <Unit filename="fancontrol/_prec.h" />
++    <Unit filename="fancontrol/afxres.h" />
++    <Unit filename="fancontrol/approot.h" />
++    <Unit filename="fancontrol/dynamicicon.h" />
++    <Unit filename="fancontrol/fancontrol.h" />
++    <Unit filename="fancontrol/portaccess.h" />
++    <Unit filename="fancontrol/sharedstate.h" />
++    <Unit filename="fancontrol/tools.h" />
++    <Unit filename="fancontrol/winstuff.h" />
++    <Unit filename="fancontrol/mingw_compat.h" />
++    <Unit filename="fancontrol/res/fancontrol.rc">
++      <Option compilerVar="WINDRES" />
++    </Unit>
++  </Project>
++</CodeBlocks_project_file>
+\ No newline at end of file
+diff --git a/fancontrol/SystemTraySDK.cpp b/fancontrol/SystemTraySDK.cpp
+index a4a94bf..a3b4392 100644
+--- a/fancontrol/SystemTraySDK.cpp
++++ b/fancontrol/SystemTraySDK.cpp
+@@ -811,7 +811,7 @@ LRESULT CSystemTray::OnSettingChange(UINT uFlags, LPCTSTR lpszSection)
+ 
+ #endif
+ 
+-LRESULT CSystemTray::OnTrayNotification(UINT wParam, LONG lParam) 
++LRESULT CSystemTray::OnTrayNotification(WPARAM wParam, LPARAM lParam) 
+ {
+ 	//Return quickly if its not for this tray icon
+ 	if (wParam != m_tnd.uID)
+diff --git a/fancontrol/_prec.h b/fancontrol/_prec.h
+index 159fcee..c486203 100644
+--- a/fancontrol/_prec.h
++++ b/fancontrol/_prec.h
+@@ -20,3 +20,7 @@
+ #include <stdio.h>
+ #include "winuser.h"
+ #include "windows.h"
++
++#ifdef __MINGW32__
++#include "mingw_compat.h"
++#endif
+diff --git a/fancontrol/fancontrol.cpp b/fancontrol/fancontrol.cpp
+index 378c714..56d0bda 100644
+--- a/fancontrol/fancontrol.cpp
++++ b/fancontrol/fancontrol.cpp
+@@ -1,4 +1,4 @@
+-﻿// --------------------------------------------------------------
++// --------------------------------------------------------------
+ //
+ //  Thinkpad Fan Control
+ //
+@@ -109,6 +109,10 @@ FANCONTROL::FANCONTROL(HINSTANCE hinstapp)
+ 	isPowerSuspendState(false),
+ 	isModernS0State(false),
+ 	isLidClosed(false),
++	resumeRecovery(false),
++	resumeRestoreMode(-1),
++	resumeNotBefore(0),
++	resumeValidSamples(0),
+ 	m_fanTimer(NULL),
+ 	m_titleTimer(NULL),
+ 	m_iconTimer(NULL),
+@@ -485,14 +489,9 @@ void FANCONTROL::HandleModernStandbyEvent(EVT_HANDLE hEvent) {
+ 			}
+ 		}
+ 		else if (xml.find(L"<EventID>507</EventID>") != std::wstring::npos) {
+-			this->isModernS0State = false;
+-			this->Trace("Detected Modern S0 Exit, defer access to EC (10s)");
+-			::Sleep(10000);
+-
+-			if (this->savedMode != -1 && this->savedMode != this->CurrentMode) {
+-				this->ModeToDialog(this->savedMode);
+-				this->Trace("Restored saved mode");
+-			}
++			// Event Log callbacks run on a worker thread. Never sleep or touch
++			// UI/EC state here: schedule resume recovery on the dialog thread.
++			::PostMessage(this->hwndDialog, WM__RESUMERECOVERY, 0, 0);
+ 		}
+ 	}
+ }
+@@ -760,12 +759,17 @@ ULONG FANCONTROL::DlgProc(HWND hwnd, ULONG msg, WPARAM mp1, LPARAM mp2) {
+ 		if (g_clientMode)
+ 			this->SendCommand(-1);
+ 		else if (!this->hThread && !this->FinalSeen)
+-			this->hThread = this->CreateThread(FANCONTROL_Thread, (ULONG)this);
++			this->hThread = this->CreateThread(FANCONTROL_Thread, this);
+ 		break;
+ 
+ 	case WM__NEWDATA:
+ 		return OnNewData(mp1);
+ 
++	case WM__RESUMERECOVERY:
++		this->isModernS0State = false;
++		this->BeginResumeRecovery();
++		return 0;
++
+ 	case WM__TASKBAR:
+ 		return OnTaskbarNotify(mp2);
+ 
+@@ -1201,76 +1205,74 @@ ULONG FANCONTROL::OnCommand(WPARAM mp1) {
+ //-------------------------------------------------------------------------
+ //  WM_POWERBROADCAST handler
+ //-------------------------------------------------------------------------
++void FANCONTROL::BeginResumeRecovery() {
++	// Called on the UI thread. Do not immediately re-enable Smart: EC may
++	// need time to respond after S3/Modern Standby resume.
++	if (!this->resumeRecovery) {
++		this->resumeRestoreMode = (this->savedMode >= 1 && this->savedMode <= 3)
++			? this->savedMode : this->CurrentMode;
++	}
++	this->resumeRecovery = true;
++	this->resumeValidSamples = 0;
++	this->resumeNotBefore = ::GetTickCount() + 2500;
++	this->Trace("Resume: resume recovery scheduled; waiting for valid CPU temperature");
++	// Keep BIOS in control until sensor validation succeeds.
++	this->ModeToDialog(1);
++}
++
++//-------------------------------------------------------------------------
++//  WM_POWERBROADCAST handler - fix.1
++//-------------------------------------------------------------------------
+ ULONG FANCONTROL::OnPowerBroadcast(WPARAM mp1, LPARAM mp2) {
+ 	if (mp1 == PBT_APMSUSPEND) {
+ 		this->isPowerSuspendState = true;
+-		this->savedMode = this->CurrentMode;
++		// The lid-close event might have already moved Smart to BIOS. Never
++		// overwrite the original Smart selection with that temporary mode.
++		if (this->savedMode == -1)
++			this->savedMode = this->CurrentMode;
+ 		this->Trace("System suspend detected");
+-
+ 		if (this->PowerSuspendMode == 4) {
+ 			this->ModeToDialog(3);
+-			if (this->SetFan("Switched fans off and to manual mode", 0x00)) ::Sleep(1000);
++			this->SetFan("Suspend: fans off", 0x00);
+ 		}
+ 	}
+-	else if (mp1 == PBT_APMRESUMEAUTOMATIC) {
++	else if (mp1 == PBT_APMRESUMEAUTOMATIC || mp1 == PBT_APMRESUMECRITICAL || mp1 == PBT_APMRESUMESUSPEND) {
+ 		this->isPowerSuspendState = false;
+ 		this->Trace("System resume detected");
+-
+-		if (this->PowerSuspendMode == 4) {
+-			if (this->savedMode != -1 && this->savedMode != this->CurrentMode) {
+-				::Sleep(5000);
+-				this->ModeToDialog(this->savedMode);
+-				::Sleep(1000);
+-				this->Trace("Restored saved mode");
+-			}
+-		}
++		this->BeginResumeRecovery();
+ 	}
+-	else if (mp1 == PBT_POWERSETTINGCHANGE) {
++	else if (mp1 == PBT_POWERSETTINGCHANGE && mp2 != 0) {
+ 		POWERBROADCAST_SETTING* pbs = (POWERBROADCAST_SETTING*)mp2;
+-		if (pbs->PowerSetting == GUID_LIDSWITCH_STATE_CHANGE) {
+-			BYTE state = *(BYTE*)(&pbs->Data);
+-
+-			if (state == 0) {  // Lid closed
+-				this->isLidClosed = true;
+-				this->Trace("Lid close detected");
+-				this->savedMode = this->CurrentMode;
+-
+-				if (this->PowerSuspendMode == 1) {
+-					this->ModeToDialog(1);
+-					if (this->SetFan("Switched to BIOS mode", 0x80)) ::Sleep(1000);
+-				}
+-				else if (this->PowerSuspendMode == 2 || this->PowerSuspendMode >= 5) {
+-					this->Trace("Continuing current mode");
+-
+-					// docked profile: run the other smart curve while the lid is closed
+-					if (!g_clientMode && this->LidSmartLevel && this->CurrentMode == 2
+-						&& this->SmartLevels2[0].temp2 != 0
+-						&& this->IndSmartLevel != this->LidSmartLevel - 1) {
++		if (pbs->PowerSetting == GUID_LIDSWITCH_STATE_CHANGE && pbs->DataLength >= 1) {
++			const BYTE state = pbs->Data[0];
++			if (state == 0) {
++				if (!this->isLidClosed) {
++					this->isLidClosed = true;
++					this->Trace("Lid close detected");
++					if (this->savedMode == -1)
++						this->savedMode = this->CurrentMode;
++					if (this->PowerSuspendMode == 1) {
++						this->ModeToDialog(1);
++						this->SetFan("Lid closed: BIOS", 0x80);
++					}
++					else if (this->PowerSuspendMode == 3) {
++						this->ModeToDialog(3);
++						this->SetFan("Lid closed: fans off", 0x00);
++					}
++					else if (this->PowerSuspendMode == 2 && !g_clientMode &&
++						this->LidSmartLevel && this->CurrentMode == 2 &&
++						this->SmartLevels2[0].temp2 != 0 &&
++						this->IndSmartLevel != this->LidSmartLevel - 1) {
+ 						this->savedSmartLevel = this->IndSmartLevel;
+ 						this->SwitchSmartLevel(this->LidSmartLevel - 1);
+ 					}
+ 				}
+-				else if (this->PowerSuspendMode == 3) {
+-					this->ModeToDialog(3);
+-					if (this->SetFan("Switched fans off and to manual mode", 0x00)) ::Sleep(1000);
+-				}
+-				else if (this->PowerSuspendMode == 4) {
+-					// Defer to PBT_APMSUSPEND/PBT_APMRESUMEAUTOMATIC handling
+-				}
+ 			}
+-			else { // Lid opened
++			else {
+ 				this->isLidClosed = false;
+ 				this->Trace("Lid open detected");
+-
+-				if (this->PowerSuspendMode != 4) {
+-					if (this->savedMode != -1 && this->savedMode != this->CurrentMode) {
+-						::Sleep(5000);
+-						this->ModeToDialog(this->savedMode);
+-						::Sleep(1000);
+-						this->Trace("Restored saved mode");
+-					}
+-				}
+-
++				if (this->PowerSuspendMode != 0)
++					this->BeginResumeRecovery();
+ 				if (!g_clientMode && this->savedSmartLevel != -1) {
+ 					this->SwitchSmartLevel(this->savedSmartLevel);
+ 					this->savedSmartLevel = -1;
+@@ -1278,7 +1280,6 @@ ULONG FANCONTROL::OnPowerBroadcast(WPARAM mp1, LPARAM mp2) {
+ 			}
+ 		}
+ 	}
+-
+ 	return 0;
+ }
+ 
+@@ -1311,6 +1312,22 @@ ULONG FANCONTROL::OnNewData(WPARAM mp1) {
+ 
+ 	if (ok) {
+ 		this->ReadErrorCount = 0;
++		if (this->resumeRecovery) {
++			const unsigned int cpu = (unsigned char)this->State.Sensors[0];
++			if (cpu > 0 && cpu <= 110 && cpu != 0x80)
++				++this->resumeValidSamples;
++			else
++				this->resumeValidSamples = 0;
++			if (!this->isLidClosed &&
++				(LONG)(::GetTickCount() - this->resumeNotBefore) >= 0 &&
++				this->resumeValidSamples >= 2) {
++				if (this->resumeRestoreMode >= 1 && this->resumeRestoreMode <= 3)
++					this->ModeToDialog(this->resumeRestoreMode);
++				this->savedMode = -1;
++				this->resumeRecovery = false;
++				this->Trace("Resume: EC validated, restored mode after resume");
++			}
++		}
+ 		this->HandleData();
+ 
+ 		if (m_needClose) {
+@@ -1328,15 +1345,31 @@ ULONG FANCONTROL::OnNewData(WPARAM mp1) {
+ 		sprintf_s(buf, sizeof(buf), "We will close to BIOS-Mode after %d consecutive read errors", this->MaxReadErrors);
+ 		this->Trace(buf);
+ 		this->ReadErrorCount++;
++		// Only the UI thread reaches this point after the EC worker was joined.
++		// Reopen PawnIO after an unsuccessful wake or an EC read failure.
++		if (this->ReadErrorCount >= 3 && this->ReadErrorCount % 3 == 0) {
++			this->Trace("Resume: trying to reopen EC port backend");
++			PortAccess_Close();
++			if (!PortAccess_Open())
++				this->Trace("Resume: EC port backend reopen failed");
++		}
++		if (this->CurrentMode == 2 && this->ReadErrorCount >= 2) {
++			if (!this->resumeRecovery) {
++				this->resumeRestoreMode = 2;
++				this->resumeRecovery = true;
++				this->resumeNotBefore = ::GetTickCount() + 2500;
++				this->resumeValidSamples = 0;
++			}
++			this->ModeToDialog(1);
++			this->SetFan("EC read error: BIOS", 0x80);
++		}
+ 
+ 		// after so many consecutive read errors, try to switch back to bios mode
+ 		if (this->ReadErrorCount > this->MaxReadErrors) {
+ 			this->ModeToDialog(1);
+-			ok = this->SetFan("Max. Errors", 0x80);
+-			if (ok) {
+-				this->Trace("Set to BIOS Mode, to many consecutive read errors");
+-				::Sleep(2000);
+-				::SendMessage(this->hwndDialog, WM_ENDSESSION, 0, 0);
++			if (this->ReadErrorCount == this->MaxReadErrors + 1) {
++				this->Trace("Resume: persistent EC error - staying in BIOS and retrying");
++				this->SetFan("Persistent EC error: BIOS", 0x80);
+ 			}
+ 		}
+ 	}
+diff --git a/fancontrol/fancontrol.h b/fancontrol/fancontrol.h
+index aa52b48..f26002b 100644
+--- a/fancontrol/fancontrol.h
++++ b/fancontrol/fancontrol.h
+@@ -25,8 +25,8 @@
+ #include "winstuff.h"
+ #include "TaskbarTextIcon.h"
+ 
+-constexpr const char* FANCONTROLVERSIONS = "2.5.1 Single Fan";
+-constexpr const char* FANCONTROLVERSIOND = "2.5.1 Dual Fan";
++constexpr const char* FANCONTROLVERSIONS = "2.5.1-fix.6 Single Fan";
++constexpr const char* FANCONTROLVERSIOND = "2.5.1-fix.6 Dual Fan";
+ 
+ //Pipe name format - \\.\pipe\pipename
+ #define g_szPipeName "\\\\.\\Pipe\\TPFanControl01"  //Name given to the pipe
+@@ -35,6 +35,7 @@ constexpr const char* FANCONTROLVERSIOND = "2.5.1 Dual Fan";
+ #define WM__GETDATA    (WM_USER+6)
+ #define WM__NEWDATA    (WM_USER+7)
+ #define WM__TASKBAR    (WM_USER+8)
++#define WM__RESUMERECOVERY (WM_USER+9)
+ 
+ #define setzero(adr, size) memset((void*)(adr), (char)0x00, (size))
+ #define ARRAYMAX(tab) (sizeof(tab)/sizeof((tab)[0]))
+@@ -212,10 +213,9 @@ protected:
+ 	CTaskbarTextIcon** ppTbTextIcon;
+ 	MUTEXSEM* pTextIconMutex;
+ 
+-	static int _stdcall
+-		FANCONTROL_Thread(ULONG
+-			parm) \
+-	{ return ((FANCONTROL*)parm)->WorkThread(); }
++	static DWORD WINAPI
++		FANCONTROL_Thread(LPVOID parm)
++	{ return static_cast<DWORD>(static_cast<FANCONTROL*>(parm)->WorkThread()); }
+ 
+ 	int WorkThread();
+ 
+@@ -252,6 +252,12 @@ protected:
+ 	bool isPowerSuspendState;
+ 	bool isModernS0State;
+ 	bool isLidClosed;
++	// fix.2: only restore software control after valid post-resume EC samples.
++	bool resumeRecovery;
++	int resumeRestoreMode;
++	DWORD resumeNotBefore;
++	int resumeValidSamples;
++	void BeginResumeRecovery();
+ 
+ 	// Constructor helpers
+ 	void InitSensorNames();
+@@ -293,10 +299,7 @@ protected:
+ 
+ 	void CurrentTimeLocalized(char* result, size_t sizeof_result);
+ 
+-	HANDLE CreateThread(int(_stdcall
+-		* fnct)(ULONG),
+-		ULONG p
+-	);
++	HANDLE CreateThread(LPTHREAD_START_ROUTINE fnct, LPVOID p);
+ 
+ 	// portio.cpp
+ 
+diff --git a/fancontrol/fanstuff.cpp b/fancontrol/fanstuff.cpp
+index 4335b9b..c844fcc 100644
+--- a/fancontrol/fanstuff.cpp
++++ b/fancontrol/fanstuff.cpp
+@@ -115,8 +115,17 @@ bool FANCONTROL::HandleData(void) {
+ 		}
+ 	}
+ 
++	// fix.2: zero means no usable active sensor, not a cold processor.
++	// In particular, ignore-sensor filtering must never silently turn
++	// the Smart regulator into a fan-off command.
+ 	this->MaxTemp = maxtemp;
+ 	this->iMaxTemp = imaxtemp;
++	if (maxtemp <= 0 || maxtemp > 110) {
++		this->Trace("EC: no usable temperature after sensor filtering; BIOS fallback");
++		this->ModeToDialog(1);
++		this->SetFan("No valid active sensor", 0x80);
++		return false;
++	}
+ 
+ 	//
+ 	// update dialog elements
+@@ -384,7 +393,7 @@ bool FANCONTROL::HandleData(void) {
+ 		if (speedVal >= 0 && speedVal <= 255) {
+ 			// same staircase as smart mode: run 7 regulated until the fan is
+ 			// spun up, then disengage for the last few hundred rpm
+-			if (speedVal == 64 && this->State.FanCtrl != 64 && this->fan1speed < 4000)
++			if (speedVal == 64 && this->State.FanCtrl != 64 && this->fan1speed < 3200)
+ 				speedVal = 7;
+ 
+ 			if (this->State.FanCtrl != speedVal)
+@@ -408,6 +417,12 @@ bool FANCONTROL::HandleData(void) {
+ //  smart fan control depending on temperature
+ //-------------------------------------------------------------------------
+ void FANCONTROL::SmartControl(void) {
++	if (this->MaxTemp <= 0 || this->MaxTemp > 110) {
++		this->Trace("EC: Smart inhibited, no valid temperature; falling back to BIOS");
++		this->ModeToDialog(1);
++		this->SetFan("Invalid temperature: BIOS", 0x80);
++		return;
++	}
+ 	char obuf[256] = "";
+ 	int i, newfanctrl = -1, levelIndex = -1, fanctrl = this->State.FanCtrl;
+ 
+@@ -460,7 +475,7 @@ void FANCONTROL::SmartControl(void) {
+ 	// in disengaged mode the EC crawls up from its current duty, useless in an
+ 	// emergency; run 7 regulated until the fan is spun up, then top out on 64
+ 	// so the crawl only covers the last few hundred rpm
+-	if (newfanctrl == 64 && fanctrl != 64 && this->fan1speed < 4000)
++	if (newfanctrl == 64 && fanctrl != 64 && this->fan1speed < 3200)
+ 		newfanctrl = 7;
+ 
+ 	if (newfanctrl != -1 && newfanctrl != this->State.FanCtrl) {
+@@ -618,8 +633,15 @@ bool FANCONTROL::SetHdw(const char* source, int hdwctrl, int HdwOffset, int AnyW
+ //-------------------------------------------------------------------------
+ bool FANCONTROL::SampleMatch(FCSTATE* smp1, FCSTATE* smp2) {
+ 
+-	// match for identical fanctrl settings
++	// fix.2: fan-control register alone is insufficient: two samples
++	// can agree on FanCtrl while their CPU sensors are invalid/zero.
+ 	if (smp1->FanCtrl != smp2->FanCtrl) return false;
++	const unsigned int cpu1 = (unsigned char)smp1->Sensors[0];
++	const unsigned int cpu2 = (unsigned char)smp2->Sensors[0];
++	if (cpu1 == 0 || cpu2 == 0 || cpu1 == 0x80 || cpu2 == 0x80 ||
++		cpu1 > 110 || cpu2 > 110) return false;
++	// Permit one degree of normal temperature drift across snapshots.
++	if ((cpu1 > cpu2 ? cpu1 - cpu2 : cpu2 - cpu1) > 2) return false;
+ 
+ 	// insert any further match criteria here:
+ 	// -----------------------
+diff --git a/fancontrol/mingw_compat.h b/fancontrol/mingw_compat.h
+new file mode 100644
+index 0000000..eec8e9e
+--- /dev/null
++++ b/fancontrol/mingw_compat.h
+@@ -0,0 +1,80 @@
++// MinGW compatibility for MSVC CRT calls in upstream TPFanCtrl2.
++// strlen_s is already implemented by the original tools.h; do not redefine it.
++// This header is injected by _prec.h, only for GNU Windows builds.
++#pragma once
++#ifdef __MINGW32__
++#include <cstdarg>
++#include <cstdio>
++#include <cstring>
++#include <cstdlib>
++#include <cerrno>
++#include <algorithm>
++#include <tchar.h>
++#include <string.h>
++#ifndef __min
++#define __min(a,b) ((a)<(b)?(a):(b))
++#endif
++#ifndef __max
++#define __max(a,b) ((a)>(b)?(a):(b))
++#endif
++#ifndef _countof
++#define _countof(a) (sizeof(a)/sizeof((a)[0]))
++#endif
++inline int x395_sprintf_s(char* d, size_t n, const char* fmt, ...) {
++    if (!d || !n) return -1;
++    va_list a; va_start(a,fmt);
++    int r=vsnprintf(d,n,fmt,a); va_end(a);
++    d[n-1]='\0';return r;
++}
++inline int x395_vsprintf_s(char* d,size_t n,const char* f,va_list a) {
++    if (!d || !n) return -1;
++    int r=vsnprintf(d,n,f,a);d[n-1]='\0';return r;
++}
++inline int x395_fopen_s(FILE** f,const char* name,const char* mode) {
++    if(!f) return EINVAL;
++    *f=fopen(name,mode);return *f?0:errno;
++}
++inline int x395_strcpy_s(char* d,size_t n,const char* s) {
++    if(!d||!n||!s)return EINVAL;
++    size_t k=strlen(s);if(k>=n){d[0]=0;return ERANGE;}
++    memcpy(d,s,k+1);return 0;
++}
++inline int x395_strncpy_s(char* d,size_t n,const char* s,size_t count) {
++    if(!d||!n||!s)return EINVAL;
++    size_t k=std::min(std::min(strlen(s),count),n-1);
++    memcpy(d,s,k);d[k]=0;return 0;
++}
++inline int x395_strcat_s(char* d,size_t n,const char* s) {
++    if(!d||!s||!n)return EINVAL;
++    size_t k=strlen(d),z=strlen(s);if(k+z>=n)return ERANGE;
++    memcpy(d+k,s,z+1);return 0;
++}
++inline int x395_strncat_s(char* d,size_t n,const char* s,size_t count) {
++    if(!d||!s||!n)return EINVAL;
++    size_t k=strlen(d);if(k>=n)return ERANGE;
++    size_t z=std::min(std::min(strlen(s),count),n-k-1);
++    memcpy(d+k,s,z);d[k+z]=0;return 0;
++}
++inline int x395_itoa_s(int val,char* d,size_t n,int radix) {
++    if(radix!=10 || !d || !n)return EINVAL;
++    return snprintf(d,n,"%d",val)<0?ERANGE:0;
++}
++template<size_t N> inline int x395_itoa_s(int val,char (&d)[N],int radix) {
++    return x395_itoa_s(val,d,N,radix);
++}
++#define sprintf_s x395_sprintf_s
++#define vsprintf_s x395_vsprintf_s
++#define fopen_s x395_fopen_s
++#define strcpy_s x395_strcpy_s
++#define strncpy_s x395_strncpy_s
++#define strcat_s x395_strcat_s
++#define strncat_s x395_strncat_s
++#define _itoa_s x395_itoa_s
++#define sscanf_s sscanf
++#define _tcsncpy_s x395_strncpy_s
++// strtok_s under MinGW/MSVCRT is available in some toolchains only.
++// Use the C runtime strtok_s where available; old compilers can map to strtok_r.
++#ifndef strtok_s
++#define strtok_s strtok_r
++#endif
++#endif
+diff --git a/fancontrol/misc.cpp b/fancontrol/misc.cpp
+index a73e624..cdf527d 100644
+--- a/fancontrol/misc.cpp
++++ b/fancontrol/misc.cpp
+@@ -1,4 +1,4 @@
+-﻿
++
+ // --------------------------------------------------------------
+ //
+ //  Thinkpad Fan Control
+@@ -938,10 +938,7 @@ FANCONTROL::Tracecsvod(const char* text) {
+ //  create a thread
+ //-------------------------------------------------------------------------
+ HANDLE
+-FANCONTROL::CreateThread(int(_stdcall* fnct)(ULONG), ULONG p) {
+-	LPTHREAD_START_ROUTINE thread = (LPTHREAD_START_ROUTINE)fnct;
++FANCONTROL::CreateThread(LPTHREAD_START_ROUTINE fnct, LPVOID p) {
+ 	DWORD tid;
+-	HANDLE hThread;
+-	hThread = ::CreateThread(NULL, 8 * 4096, thread, (void*)p, 0, &tid);
+-	return hThread;
++	return ::CreateThread(NULL, 8 * 4096, fnct, p, 0, &tid);
+ }
+\ No newline at end of file
+diff --git a/fancontrol/res/fancontrol.rc b/fancontrol/res/fancontrol.rc
+index ab27af1..77d5aef 100644
+--- a/fancontrol/res/fancontrol.rc
++++ b/fancontrol/res/fancontrol.rc
+@@ -190,8 +190,8 @@ END
+ //
+ 
+ 1 VERSIONINFO
+- FILEVERSION 2,5,1,0
+- PRODUCTVERSION 2,5,1,0
++ FILEVERSION 2,5,1,6
++ PRODUCTVERSION 2,5,1,6
+  FILEFLAGSMASK 0x8L
+ #ifdef _DEBUG
+  FILEFLAGS 0x9L
+@@ -208,13 +208,13 @@ BEGIN
+         BEGIN
+             VALUE "Comments", "Usage on own risk!"
+             VALUE "FileDescription", "Fan Control Software"
+-            VALUE "FileVersion", "2, 5, 1, 0"
++            VALUE "FileVersion", "2, 5, 1, 4"
+             VALUE "InternalName", "TPFanControl 2"
+             VALUE "LegalTrademarks", "TPFanControl"
+             VALUE "OriginalFilename", "TPFanControl.exe"
+             VALUE "PrivateBuild", "Fan Control Software"
+             VALUE "ProductName", "TPFanControl"
+-            VALUE "ProductVersion", "2, 5, 1, 0"
++            VALUE "ProductVersion", "2, 5, 1, 4"
+             VALUE "SpecialBuild", "easy easy setup"
+         END
+     END
+diff --git a/fancontrol/winstuff.cpp b/fancontrol/winstuff.cpp
+index bd7dfa6..ae979ae 100644
+--- a/fancontrol/winstuff.cpp
++++ b/fancontrol/winstuff.cpp
+@@ -1,4 +1,4 @@
+-﻿// --------------------------------------------------------------
++// --------------------------------------------------------------
+ //
+ //  Thinkpad Fan Control
+ //
+@@ -349,7 +349,7 @@ MENU::MENU(HMENU hmenu)
+ }
+ 
+ MENU::MENU(int id, HINSTANCE hdll)
+-	: hMenu(::LoadMenu(((ULONG)hdll == (ULONG)-1) ? hInstRes : hdll, MAKEINTRESOURCE(id))),
++	: hMenu(::LoadMenu((hdll == reinterpret_cast<HINSTANCE>(static_cast<INT_PTR>(-1))) ? hInstRes : hdll, MAKEINTRESOURCE(id))),
+ 	hWndOwner(NULL),
+ 	IsLoaded(TRUE) {
+ 
+@@ -486,8 +486,8 @@ MENU::Popup(HWND hwndowner, POINT* ppoint, BOOL synchtrack) {
+ 		::GetCursorPos(&point);
+ 
+ 	hmenu = CreateMenu();
+-	::AppendMenu(hmenu, MF_POPUP | MF_STRING, (UINT)
+-		this->hMenu, "BLUB");
++	::AppendMenu(hmenu, MF_POPUP | MF_STRING,
++		reinterpret_cast<UINT_PTR>(this->hMenu), "BLUB");
+ 	hmenuShow = ::GetSubMenu(hmenu, 0);
+ 	RECT r = { 0, 0, 10, 10 };
+ 
+diff --git a/fancontrol/winstuff.h b/fancontrol/winstuff.h
+index da2374d..bfa73b3 100644
+--- a/fancontrol/winstuff.h
++++ b/fancontrol/winstuff.h
+@@ -126,7 +126,7 @@ public:
+ 
+ 	MENU(HMENU hm);
+ 
+-	MENU(int id, HINSTANCE hdll = (HINSTANCE)(ULONG)-1);
++	MENU(int id, HINSTANCE hdll = reinterpret_cast<HINSTANCE>(static_cast<INT_PTR>(-1)));
+ 
+ 	~MENU() {
+ 		if (this->IsLoaded) ::DestroyMenu(this->hMenu);
