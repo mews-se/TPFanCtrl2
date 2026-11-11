@@ -20,3 +20,7 @@
 #include <stdio.h>
 #include "winuser.h"
 #include "windows.h"
+
+#ifdef __MINGW32__
+#include "mingw_compat.h"
+#endif

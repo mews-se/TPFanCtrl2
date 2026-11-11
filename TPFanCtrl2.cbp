@@ -1,0 +1,100 @@
+<?xml version='1.0' encoding='utf-8'?>
+<CodeBlocks_project_file>
+  <FileVersion major="1" minor="6" />
+  <Project>
+    <Option title="TPFanCtrl2" />
+    <Option pch_mode="2" />
+    <Option compiler="gcc" />
+    <Build>
+      <Target title="Debug">
+        <Option output="Debug/TPFanControl.exe" prefix_auto="0" extension_auto="0" />
+        <Option object_output="Debug/obj" />
+        <Option type="0" />
+        <Option compiler="gcc" />
+        <Compiler>
+          <Add option="-std=gnu++14" />
+          <Add option="-funsigned-char" />
+          <Add option="-DWIN32" />
+          <Add option="-D_WINDOWS" />
+          <Add option="-D_WIN32_WINNT=0x0601" />
+          <Add option="-g" />
+          <Add option="-D_DEBUG" />
+        </Compiler>
+        <Linker>
+          <Add library="comctl32" />
+          <Add library="wevtapi" />
+          <Add library="ole32" />
+          <Add library="uuid" />
+          <Add library="shell32" />
+          <Add library="advapi32" />
+          <Add library="user32" />
+          <Add library="gdi32" />
+          <Add library="comdlg32" />
+          <Add library="version" />
+          <Add library="shlwapi" />
+          <Add library="psapi" />
+        </Linker>
+      </Target>
+      <Target title="Release">
+        <Option output="Release/TPFanControl.exe" prefix_auto="0" extension_auto="0" />
+        <Option object_output="Release/obj" />
+        <Option type="0" />
+        <Option compiler="gcc" />
+        <Compiler>
+          <Add option="-std=gnu++14" />
+          <Add option="-funsigned-char" />
+          <Add option="-DWIN32" />
+          <Add option="-D_WINDOWS" />
+          <Add option="-D_WIN32_WINNT=0x0601" />
+          <Add option="-O2" />
+          <Add option="-DNDEBUG" />
+        </Compiler>
+        <Linker>
+          <Add library="comctl32" />
+          <Add library="wevtapi" />
+          <Add library="ole32" />
+          <Add library="uuid" />
+          <Add library="shell32" />
+          <Add library="advapi32" />
+          <Add library="user32" />
+          <Add library="gdi32" />
+          <Add library="comdlg32" />
+          <Add library="version" />
+          <Add library="shlwapi" />
+          <Add library="psapi" />
+        </Linker>
+      </Target>
+    </Build>
+    <Compiler>
+      <Add directory="fancontrol" />
+      <Add directory="fancontrol/res" />
+    </Compiler>
+    <Unit filename="fancontrol/SystemTraySDK.cpp" />
+    <Unit filename="fancontrol/_prec.cpp" />
+    <Unit filename="fancontrol/approot.cpp" />
+    <Unit filename="fancontrol/dynamicicon.cpp" />
+    <Unit filename="fancontrol/fancontrol.cpp" />
+    <Unit filename="fancontrol/fanstuff.cpp" />
+    <Unit filename="fancontrol/misc.cpp" />
+    <Unit filename="fancontrol/portaccess.cpp" />
+    <Unit filename="fancontrol/portio.cpp" />
+    <Unit filename="fancontrol/sharedstate.cpp" />
+    <Unit filename="fancontrol/winstuff.cpp" />
+    <Unit filename="fancontrol/SystemTraySDK.h" />
+    <Unit filename="fancontrol/TVicPort.h" />
+    <Unit filename="fancontrol/TaskbarTextIcon.h" />
+    <Unit filename="fancontrol/_prec.h" />
+    <Unit filename="fancontrol/afxres.h" />
+    <Unit filename="fancontrol/approot.h" />
+    <Unit filename="fancontrol/dynamicicon.h" />
+    <Unit filename="fancontrol/fancontrol.h" />
+    <Unit filename="fancontrol/portaccess.h" />
+    <Unit filename="fancontrol/sharedstate.h" />
+    <Unit filename="fancontrol/tools.h" />
+    <Unit filename="fancontrol/winstuff.h" />
+    <Unit filename="fancontrol/mingw_compat.h" />
+    <Unit filename="fancontrol/res/fancontrol.rc">
+      <Option compilerVar="WINDRES" />
+    </Unit>
+  </Project>
+</CodeBlocks_project_file>

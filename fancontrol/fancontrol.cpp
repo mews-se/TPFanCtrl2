@@ -1,4 +1,4 @@
-﻿// --------------------------------------------------------------
+// --------------------------------------------------------------
 //
 //  Thinkpad Fan Control
 //
@@ -109,6 +109,10 @@ FANCONTROL::FANCONTROL(HINSTANCE hinstapp)
 	isPowerSuspendState(false),
 	isModernS0State(false),
 	isLidClosed(false),
+	resumeRecovery(false),
+	resumeRestoreMode(-1),
+	resumeNotBefore(0),
+	resumeValidSamples(0),
 	m_fanTimer(NULL),
 	m_titleTimer(NULL),
 	m_iconTimer(NULL),
@@ -485,14 +489,9 @@ void FANCONTROL::HandleModernStandbyEvent(EVT_HANDLE hEvent) {
 			}
 		}
 		else if (xml.find(L"<EventID>507</EventID>") != std::wstring::npos) {
-			this->isModernS0State = false;
-			this->Trace("Detected Modern S0 Exit, defer access to EC (10s)");
-			::Sleep(10000);
-
-			if (this->savedMode != -1 && this->savedMode != this->CurrentMode) {
-				this->ModeToDialog(this->savedMode);
-				this->Trace("Restored saved mode");
-			}
+			// Event Log callbacks run on a worker thread. Never sleep or touch
+			// UI/EC state here: schedule resume recovery on the dialog thread.
+			::PostMessage(this->hwndDialog, WM__RESUMERECOVERY, 0, 0);
 		}
 	}
 }
@@ -760,11 +759,16 @@ ULONG FANCONTROL::DlgProc(HWND hwnd, ULONG msg, WPARAM mp1, LPARAM mp2) {
 		if (g_clientMode)
 			this->SendCommand(-1);
 		else if (!this->hThread && !this->FinalSeen)
-			this->hThread = this->CreateThread(FANCONTROL_Thread, (ULONG)this);
+			this->hThread = this->CreateThread(FANCONTROL_Thread, this);
 		break;
 
 	case WM__NEWDATA:
 		return OnNewData(mp1);
+
+	case WM__RESUMERECOVERY:
+		this->isModernS0State = false;
+		this->BeginResumeRecovery();
+		return 0;
 
 	case WM__TASKBAR:
 		return OnTaskbarNotify(mp2);
@@ -1201,76 +1205,74 @@ ULONG FANCONTROL::OnCommand(WPARAM mp1) {
 //-------------------------------------------------------------------------
 //  WM_POWERBROADCAST handler
 //-------------------------------------------------------------------------
+void FANCONTROL::BeginResumeRecovery() {
+	// Called on the UI thread. Do not immediately re-enable Smart: EC may
+	// need time to respond after S3/Modern Standby resume.
+	if (!this->resumeRecovery) {
+		this->resumeRestoreMode = (this->savedMode >= 1 && this->savedMode <= 3)
+			? this->savedMode : this->CurrentMode;
+	}
+	this->resumeRecovery = true;
+	this->resumeValidSamples = 0;
+	this->resumeNotBefore = ::GetTickCount() + 2500;
+	this->Trace("Resume: resume recovery scheduled; waiting for valid CPU temperature");
+	// Keep BIOS in control until sensor validation succeeds.
+	this->ModeToDialog(1);
+}
+
+//-------------------------------------------------------------------------
+//  WM_POWERBROADCAST handler - fix.1
+//-------------------------------------------------------------------------
 ULONG FANCONTROL::OnPowerBroadcast(WPARAM mp1, LPARAM mp2) {
 	if (mp1 == PBT_APMSUSPEND) {
 		this->isPowerSuspendState = true;
-		this->savedMode = this->CurrentMode;
+		// The lid-close event might have already moved Smart to BIOS. Never
+		// overwrite the original Smart selection with that temporary mode.
+		if (this->savedMode == -1)
+			this->savedMode = this->CurrentMode;
 		this->Trace("System suspend detected");
-
 		if (this->PowerSuspendMode == 4) {
 			this->ModeToDialog(3);
-			if (this->SetFan("Switched fans off and to manual mode", 0x00)) ::Sleep(1000);
+			this->SetFan("Suspend: fans off", 0x00);
 		}
 	}
-	else if (mp1 == PBT_APMRESUMEAUTOMATIC) {
+	else if (mp1 == PBT_APMRESUMEAUTOMATIC || mp1 == PBT_APMRESUMECRITICAL || mp1 == PBT_APMRESUMESUSPEND) {
 		this->isPowerSuspendState = false;
 		this->Trace("System resume detected");
-
-		if (this->PowerSuspendMode == 4) {
-			if (this->savedMode != -1 && this->savedMode != this->CurrentMode) {
-				::Sleep(5000);
-				this->ModeToDialog(this->savedMode);
-				::Sleep(1000);
-				this->Trace("Restored saved mode");
-			}
-		}
+		this->BeginResumeRecovery();
 	}
-	else if (mp1 == PBT_POWERSETTINGCHANGE) {
+	else if (mp1 == PBT_POWERSETTINGCHANGE && mp2 != 0) {
 		POWERBROADCAST_SETTING* pbs = (POWERBROADCAST_SETTING*)mp2;
-		if (pbs->PowerSetting == GUID_LIDSWITCH_STATE_CHANGE) {
-			BYTE state = *(BYTE*)(&pbs->Data);
-
-			if (state == 0) {  // Lid closed
-				this->isLidClosed = true;
-				this->Trace("Lid close detected");
-				this->savedMode = this->CurrentMode;
-
-				if (this->PowerSuspendMode == 1) {
-					this->ModeToDialog(1);
-					if (this->SetFan("Switched to BIOS mode", 0x80)) ::Sleep(1000);
-				}
-				else if (this->PowerSuspendMode == 2 || this->PowerSuspendMode >= 5) {
-					this->Trace("Continuing current mode");
-
-					// docked profile: run the other smart curve while the lid is closed
-					if (!g_clientMode && this->LidSmartLevel && this->CurrentMode == 2
-						&& this->SmartLevels2[0].temp2 != 0
-						&& this->IndSmartLevel != this->LidSmartLevel - 1) {
+		if (pbs->PowerSetting == GUID_LIDSWITCH_STATE_CHANGE && pbs->DataLength >= 1) {
+			const BYTE state = pbs->Data[0];
+			if (state == 0) {
+				if (!this->isLidClosed) {
+					this->isLidClosed = true;
+					this->Trace("Lid close detected");
+					if (this->savedMode == -1)
+						this->savedMode = this->CurrentMode;
+					if (this->PowerSuspendMode == 1) {
+						this->ModeToDialog(1);
+						this->SetFan("Lid closed: BIOS", 0x80);
+					}
+					else if (this->PowerSuspendMode == 3) {
+						this->ModeToDialog(3);
+						this->SetFan("Lid closed: fans off", 0x00);
+					}
+					else if (this->PowerSuspendMode == 2 && !g_clientMode &&
+						this->LidSmartLevel && this->CurrentMode == 2 &&
+						this->SmartLevels2[0].temp2 != 0 &&
+						this->IndSmartLevel != this->LidSmartLevel - 1) {
 						this->savedSmartLevel = this->IndSmartLevel;
 						this->SwitchSmartLevel(this->LidSmartLevel - 1);
 					}
 				}
-				else if (this->PowerSuspendMode == 3) {
-					this->ModeToDialog(3);
-					if (this->SetFan("Switched fans off and to manual mode", 0x00)) ::Sleep(1000);
-				}
-				else if (this->PowerSuspendMode == 4) {
-					// Defer to PBT_APMSUSPEND/PBT_APMRESUMEAUTOMATIC handling
-				}
 			}
-			else { // Lid opened
+			else {
 				this->isLidClosed = false;
 				this->Trace("Lid open detected");
-
-				if (this->PowerSuspendMode != 4) {
-					if (this->savedMode != -1 && this->savedMode != this->CurrentMode) {
-						::Sleep(5000);
-						this->ModeToDialog(this->savedMode);
-						::Sleep(1000);
-						this->Trace("Restored saved mode");
-					}
-				}
-
+				if (this->PowerSuspendMode != 0)
+					this->BeginResumeRecovery();
 				if (!g_clientMode && this->savedSmartLevel != -1) {
 					this->SwitchSmartLevel(this->savedSmartLevel);
 					this->savedSmartLevel = -1;
@@ -1278,7 +1280,6 @@ ULONG FANCONTROL::OnPowerBroadcast(WPARAM mp1, LPARAM mp2) {
 			}
 		}
 	}
-
 	return 0;
 }
 
@@ -1311,6 +1312,22 @@ ULONG FANCONTROL::OnNewData(WPARAM mp1) {
 
 	if (ok) {
 		this->ReadErrorCount = 0;
+		if (this->resumeRecovery) {
+			const unsigned int cpu = (unsigned char)this->State.Sensors[0];
+			if (cpu > 0 && cpu <= 110 && cpu != 0x80)
+				++this->resumeValidSamples;
+			else
+				this->resumeValidSamples = 0;
+			if (!this->isLidClosed &&
+				(LONG)(::GetTickCount() - this->resumeNotBefore) >= 0 &&
+				this->resumeValidSamples >= 2) {
+				if (this->resumeRestoreMode >= 1 && this->resumeRestoreMode <= 3)
+					this->ModeToDialog(this->resumeRestoreMode);
+				this->savedMode = -1;
+				this->resumeRecovery = false;
+				this->Trace("Resume: EC validated, restored mode after resume");
+			}
+		}
 		this->HandleData();
 
 		if (m_needClose) {
@@ -1328,15 +1345,31 @@ ULONG FANCONTROL::OnNewData(WPARAM mp1) {
 		sprintf_s(buf, sizeof(buf), "We will close to BIOS-Mode after %d consecutive read errors", this->MaxReadErrors);
 		this->Trace(buf);
 		this->ReadErrorCount++;
+		// Only the UI thread reaches this point after the EC worker was joined.
+		// Reopen PawnIO after an unsuccessful wake or an EC read failure.
+		if (this->ReadErrorCount >= 3 && this->ReadErrorCount % 3 == 0) {
+			this->Trace("Resume: trying to reopen EC port backend");
+			PortAccess_Close();
+			if (!PortAccess_Open())
+				this->Trace("Resume: EC port backend reopen failed");
+		}
+		if (this->CurrentMode == 2 && this->ReadErrorCount >= 2) {
+			if (!this->resumeRecovery) {
+				this->resumeRestoreMode = 2;
+				this->resumeRecovery = true;
+				this->resumeNotBefore = ::GetTickCount() + 2500;
+				this->resumeValidSamples = 0;
+			}
+			this->ModeToDialog(1);
+			this->SetFan("EC read error: BIOS", 0x80);
+		}
 
 		// after so many consecutive read errors, try to switch back to bios mode
 		if (this->ReadErrorCount > this->MaxReadErrors) {
 			this->ModeToDialog(1);
-			ok = this->SetFan("Max. Errors", 0x80);
-			if (ok) {
-				this->Trace("Set to BIOS Mode, to many consecutive read errors");
-				::Sleep(2000);
-				::SendMessage(this->hwndDialog, WM_ENDSESSION, 0, 0);
+			if (this->ReadErrorCount == this->MaxReadErrors + 1) {
+				this->Trace("Resume: persistent EC error - staying in BIOS and retrying");
+				this->SetFan("Persistent EC error: BIOS", 0x80);
 			}
 		}
 	}

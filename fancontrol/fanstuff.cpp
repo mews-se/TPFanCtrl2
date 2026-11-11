@@ -115,8 +115,17 @@ bool FANCONTROL::HandleData(void) {
 		}
 	}
 
+	// fix.2: zero means no usable active sensor, not a cold processor.
+	// In particular, ignore-sensor filtering must never silently turn
+	// the Smart regulator into a fan-off command.
 	this->MaxTemp = maxtemp;
 	this->iMaxTemp = imaxtemp;
+	if (maxtemp <= 0 || maxtemp > 110) {
+		this->Trace("EC: no usable temperature after sensor filtering; BIOS fallback");
+		this->ModeToDialog(1);
+		this->SetFan("No valid active sensor", 0x80);
+		return false;
+	}
 
 	//
 	// update dialog elements
@@ -384,7 +393,7 @@ bool FANCONTROL::HandleData(void) {
 		if (speedVal >= 0 && speedVal <= 255) {
 			// same staircase as smart mode: run 7 regulated until the fan is
 			// spun up, then disengage for the last few hundred rpm
-			if (speedVal == 64 && this->State.FanCtrl != 64 && this->fan1speed < 4000)
+			if (speedVal == 64 && this->State.FanCtrl != 64 && this->fan1speed < 3200)
 				speedVal = 7;
 
 			if (this->State.FanCtrl != speedVal)
@@ -408,6 +417,12 @@ bool FANCONTROL::HandleData(void) {
 //  smart fan control depending on temperature
 //-------------------------------------------------------------------------
 void FANCONTROL::SmartControl(void) {
+	if (this->MaxTemp <= 0 || this->MaxTemp > 110) {
+		this->Trace("EC: Smart inhibited, no valid temperature; falling back to BIOS");
+		this->ModeToDialog(1);
+		this->SetFan("Invalid temperature: BIOS", 0x80);
+		return;
+	}
 	char obuf[256] = "";
 	int i, newfanctrl = -1, levelIndex = -1, fanctrl = this->State.FanCtrl;
 
@@ -460,7 +475,7 @@ void FANCONTROL::SmartControl(void) {
 	// in disengaged mode the EC crawls up from its current duty, useless in an
 	// emergency; run 7 regulated until the fan is spun up, then top out on 64
 	// so the crawl only covers the last few hundred rpm
-	if (newfanctrl == 64 && fanctrl != 64 && this->fan1speed < 4000)
+	if (newfanctrl == 64 && fanctrl != 64 && this->fan1speed < 3200)
 		newfanctrl = 7;
 
 	if (newfanctrl != -1 && newfanctrl != this->State.FanCtrl) {
@@ -618,8 +633,15 @@ bool FANCONTROL::SetHdw(const char* source, int hdwctrl, int HdwOffset, int AnyW
 //-------------------------------------------------------------------------
 bool FANCONTROL::SampleMatch(FCSTATE* smp1, FCSTATE* smp2) {
 
-	// match for identical fanctrl settings
+	// fix.2: fan-control register alone is insufficient: two samples
+	// can agree on FanCtrl while their CPU sensors are invalid/zero.
 	if (smp1->FanCtrl != smp2->FanCtrl) return false;
+	const unsigned int cpu1 = (unsigned char)smp1->Sensors[0];
+	const unsigned int cpu2 = (unsigned char)smp2->Sensors[0];
+	if (cpu1 == 0 || cpu2 == 0 || cpu1 == 0x80 || cpu2 == 0x80 ||
+		cpu1 > 110 || cpu2 > 110) return false;
+	// Permit one degree of normal temperature drift across snapshots.
+	if ((cpu1 > cpu2 ? cpu1 - cpu2 : cpu2 - cpu1) > 2) return false;
 
 	// insert any further match criteria here:
 	// -----------------------

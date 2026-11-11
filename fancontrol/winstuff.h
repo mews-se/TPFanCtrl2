@@ -126,7 +126,7 @@ public:
 
 	MENU(HMENU hm);
 
-	MENU(int id, HINSTANCE hdll = (HINSTANCE)(ULONG)-1);
+	MENU(int id, HINSTANCE hdll = reinterpret_cast<HINSTANCE>(static_cast<INT_PTR>(-1)));
 
 	~MENU() {
 		if (this->IsLoaded) ::DestroyMenu(this->hMenu);

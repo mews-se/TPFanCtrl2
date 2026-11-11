@@ -1,4 +1,4 @@
-﻿// --------------------------------------------------------------
+// --------------------------------------------------------------
 //
 //  Thinkpad Fan Control
 //
@@ -349,7 +349,7 @@ MENU::MENU(HMENU hmenu)
 }
 
 MENU::MENU(int id, HINSTANCE hdll)
-	: hMenu(::LoadMenu(((ULONG)hdll == (ULONG)-1) ? hInstRes : hdll, MAKEINTRESOURCE(id))),
+	: hMenu(::LoadMenu((hdll == reinterpret_cast<HINSTANCE>(static_cast<INT_PTR>(-1))) ? hInstRes : hdll, MAKEINTRESOURCE(id))),
 	hWndOwner(NULL),
 	IsLoaded(TRUE) {
 
@@ -486,8 +486,8 @@ MENU::Popup(HWND hwndowner, POINT* ppoint, BOOL synchtrack) {
 		::GetCursorPos(&point);
 
 	hmenu = CreateMenu();
-	::AppendMenu(hmenu, MF_POPUP | MF_STRING, (UINT)
-		this->hMenu, "BLUB");
+	::AppendMenu(hmenu, MF_POPUP | MF_STRING,
+		reinterpret_cast<UINT_PTR>(this->hMenu), "BLUB");
 	hmenuShow = ::GetSubMenu(hmenu, 0);
 	RECT r = { 0, 0, 10, 10 };
 

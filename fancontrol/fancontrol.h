@@ -25,8 +25,8 @@
 #include "winstuff.h"
 #include "TaskbarTextIcon.h"
 
-constexpr const char* FANCONTROLVERSIONS = "2.5.1 Single Fan";
-constexpr const char* FANCONTROLVERSIOND = "2.5.1 Dual Fan";
+constexpr const char* FANCONTROLVERSIONS = "2.5.1-fix.6 Single Fan";
+constexpr const char* FANCONTROLVERSIOND = "2.5.1-fix.6 Dual Fan";
 
 //Pipe name format - \\.\pipe\pipename
 #define g_szPipeName "\\\\.\\Pipe\\TPFanControl01"  //Name given to the pipe
@@ -35,6 +35,7 @@ constexpr const char* FANCONTROLVERSIOND = "2.5.1 Dual Fan";
 #define WM__GETDATA    (WM_USER+6)
 #define WM__NEWDATA    (WM_USER+7)
 #define WM__TASKBAR    (WM_USER+8)
+#define WM__RESUMERECOVERY (WM_USER+9)
 
 #define setzero(adr, size) memset((void*)(adr), (char)0x00, (size))
 #define ARRAYMAX(tab) (sizeof(tab)/sizeof((tab)[0]))
@@ -212,10 +213,9 @@ protected:
 	CTaskbarTextIcon** ppTbTextIcon;
 	MUTEXSEM* pTextIconMutex;
 
-	static int _stdcall
-		FANCONTROL_Thread(ULONG
-			parm) \
-	{ return ((FANCONTROL*)parm)->WorkThread(); }
+	static DWORD WINAPI
+		FANCONTROL_Thread(LPVOID parm)
+	{ return static_cast<DWORD>(static_cast<FANCONTROL*>(parm)->WorkThread()); }
 
 	int WorkThread();
 
@@ -252,6 +252,12 @@ protected:
 	bool isPowerSuspendState;
 	bool isModernS0State;
 	bool isLidClosed;
+	// fix.2: only restore software control after valid post-resume EC samples.
+	bool resumeRecovery;
+	int resumeRestoreMode;
+	DWORD resumeNotBefore;
+	int resumeValidSamples;
+	void BeginResumeRecovery();
 
 	// Constructor helpers
 	void InitSensorNames();
@@ -293,10 +299,7 @@ protected:
 
 	void CurrentTimeLocalized(char* result, size_t sizeof_result);
 
-	HANDLE CreateThread(int(_stdcall
-		* fnct)(ULONG),
-		ULONG p
-	);
+	HANDLE CreateThread(LPTHREAD_START_ROUTINE fnct, LPVOID p);
 
 	// portio.cpp
 
