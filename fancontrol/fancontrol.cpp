@@ -1345,31 +1345,14 @@ ULONG FANCONTROL::OnNewData(WPARAM mp1) {
 		sprintf_s(buf, sizeof(buf), "We will close to BIOS-Mode after %d consecutive read errors", this->MaxReadErrors);
 		this->Trace(buf);
 		this->ReadErrorCount++;
-		// Only the UI thread reaches this point after the EC worker was joined.
-		// Reopen PawnIO after an unsuccessful wake or an EC read failure.
-		if (this->ReadErrorCount >= 3 && this->ReadErrorCount % 3 == 0) {
-			this->Trace("Resume: trying to reopen EC port backend");
-			PortAccess_Close();
-			if (!PortAccess_Open())
-				this->Trace("Resume: EC port backend reopen failed");
-		}
-		if (this->CurrentMode == 2 && this->ReadErrorCount >= 2) {
-			if (!this->resumeRecovery) {
-				this->resumeRestoreMode = 2;
-				this->resumeRecovery = true;
-				this->resumeNotBefore = ::GetTickCount() + 2500;
-				this->resumeValidSamples = 0;
-			}
-			this->ModeToDialog(1);
-			this->SetFan("EC read error: BIOS", 0x80);
-		}
-
 		// after so many consecutive read errors, try to switch back to bios mode
 		if (this->ReadErrorCount > this->MaxReadErrors) {
 			this->ModeToDialog(1);
-			if (this->ReadErrorCount == this->MaxReadErrors + 1) {
-				this->Trace("Resume: persistent EC error - staying in BIOS and retrying");
-				this->SetFan("Persistent EC error: BIOS", 0x80);
+			ok = this->SetFan("Max. Errors", 0x80);
+			if (ok) {
+				this->Trace("Set to BIOS Mode, to many consecutive read errors");
+				::Sleep(2000);
+				::SendMessage(this->hwndDialog, WM_ENDSESSION, 0, 0);
 			}
 		}
 	}
