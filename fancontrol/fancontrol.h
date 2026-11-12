@@ -25,8 +25,8 @@
 #include "winstuff.h"
 #include "TaskbarTextIcon.h"
 
-constexpr const char* FANCONTROLVERSIONS = "2.5.1-fix.6 Single Fan";
-constexpr const char* FANCONTROLVERSIOND = "2.5.1-fix.6 Dual Fan";
+constexpr const char* FANCONTROLVERSIONS = "2.5.1 Single Fan";
+constexpr const char* FANCONTROLVERSIOND = "2.5.1 Dual Fan";
 
 //Pipe name format - \\.\pipe\pipename
 #define g_szPipeName "\\\\.\\Pipe\\TPFanControl01"  //Name given to the pipe
@@ -252,7 +252,7 @@ protected:
 	bool isPowerSuspendState;
 	bool isModernS0State;
 	bool isLidClosed;
-	// fix.2: only restore software control after valid post-resume EC samples.
+	// Restore software control after valid post-resume EC samples.
 	bool resumeRecovery;
 	int resumeRestoreMode;
 	DWORD resumeNotBefore;
