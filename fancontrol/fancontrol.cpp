@@ -1221,7 +1221,7 @@ void FANCONTROL::BeginResumeRecovery() {
 }
 
 //-------------------------------------------------------------------------
-//  WM_POWERBROADCAST handler - fix.1
+//  WM_POWERBROADCAST handler
 //-------------------------------------------------------------------------
 ULONG FANCONTROL::OnPowerBroadcast(WPARAM mp1, LPARAM mp2) {
 	if (mp1 == PBT_APMSUSPEND) {
@@ -1318,7 +1318,7 @@ ULONG FANCONTROL::OnNewData(WPARAM mp1) {
 				++this->resumeValidSamples;
 			else
 				this->resumeValidSamples = 0;
-			if (!this->isLidClosed &&
+			if ((!this->isLidClosed || this->PowerSuspendMode == 2) &&
 				(LONG)(::GetTickCount() - this->resumeNotBefore) >= 0 &&
 				this->resumeValidSamples >= 2) {
 				if (this->resumeRestoreMode >= 1 && this->resumeRestoreMode <= 3)
