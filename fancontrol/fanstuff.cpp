@@ -115,17 +115,8 @@ bool FANCONTROL::HandleData(void) {
 		}
 	}
 
-	// fix.2: zero means no usable active sensor, not a cold processor.
-	// In particular, ignore-sensor filtering must never silently turn
-	// the Smart regulator into a fan-off command.
 	this->MaxTemp = maxtemp;
 	this->iMaxTemp = imaxtemp;
-	if (maxtemp <= 0 || maxtemp > 110) {
-		this->Trace("EC: no usable temperature after sensor filtering; BIOS fallback");
-		this->ModeToDialog(1);
-		this->SetFan("No valid active sensor", 0x80);
-		return false;
-	}
 
 	//
 	// update dialog elements
@@ -418,9 +409,12 @@ bool FANCONTROL::HandleData(void) {
 //-------------------------------------------------------------------------
 void FANCONTROL::SmartControl(void) {
 	if (this->MaxTemp <= 0 || this->MaxTemp > 110) {
-		this->Trace("EC: Smart inhibited, no valid temperature; falling back to BIOS");
-		this->ModeToDialog(1);
-		this->SetFan("Invalid temperature: BIOS", 0x80);
+		// Keep Smart selected so normal regulation resumes with valid sensor data.
+		// Do not write repeatedly while the BIOS already controls the fan.
+		if (this->State.FanCtrl != 0x80) {
+			this->Trace("EC: invalid temperature; temporarily handing fan control to BIOS");
+			this->SetFan("Invalid temperature: BIOS", 0x80);
+		}
 		return;
 	}
 	char obuf[256] = "";
