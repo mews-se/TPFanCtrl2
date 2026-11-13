@@ -35,6 +35,7 @@ constexpr const char* FANCONTROLVERSIOND = "2.5.1 Dual Fan";
 #define WM__GETDATA    (WM_USER+6)
 #define WM__NEWDATA    (WM_USER+7)
 #define WM__TASKBAR    (WM_USER+8)
+#define WM__S0EXIT     (WM_USER+9)
 
 #define setzero(adr, size) memset((void*)(adr), (char)0x00, (size))
 #define ARRAYMAX(tab) (sizeof(tab)/sizeof((tab)[0]))
@@ -251,6 +252,12 @@ protected:
 	bool isPowerSuspendState;
 	bool isModernS0State;
 	bool isLidClosed;
+	// savedMode waits for sane readings after resume or lid open
+	bool restorePending;
+	DWORD restoreNotBefore;
+	int restoreGoodReads;
+	// modes 1 and 3 keep their lid mode until the lid opens
+	bool LidHoldsMode() const { return this->isLidClosed && (this->PowerSuspendMode == 1 || this->PowerSuspendMode == 3); }
 
 	// Constructor helpers
 	void InitSensorNames();
@@ -272,6 +279,7 @@ protected:
 	// Shared helpers
 	bool TryClose();
 	void SwitchSmartLevel(int level);
+	void ScheduleRestore();
 	void PullSharedState();
 	void SendCommand(int smart);
 	void CreateAllNamedPipes();

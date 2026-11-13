@@ -109,6 +109,9 @@ FANCONTROL::FANCONTROL(HINSTANCE hinstapp)
 	isPowerSuspendState(false),
 	isModernS0State(false),
 	isLidClosed(false),
+	restorePending(false),
+	restoreNotBefore(0),
+	restoreGoodReads(0),
 	m_fanTimer(NULL),
 	m_titleTimer(NULL),
 	m_iconTimer(NULL),
@@ -470,7 +473,8 @@ void FANCONTROL::HandleModernStandbyEvent(EVT_HANDLE hEvent) {
 		if (xml.find(L"<EventID>506</EventID>") != std::wstring::npos) {
 			this->isModernS0State = true;
 			this->Trace("Detected Modern S0 Entry");
-			this->savedMode = this->CurrentMode;
+			if (this->savedMode == -1)
+				this->savedMode = this->CurrentMode;
 
 			if (this->ModernS0Mode == 1) {
 				this->ModeToDialog(1);
@@ -485,14 +489,8 @@ void FANCONTROL::HandleModernStandbyEvent(EVT_HANDLE hEvent) {
 			}
 		}
 		else if (xml.find(L"<EventID>507</EventID>") != std::wstring::npos) {
-			this->isModernS0State = false;
-			this->Trace("Detected Modern S0 Exit, defer access to EC (10s)");
-			::Sleep(10000);
-
-			if (this->savedMode != -1 && this->savedMode != this->CurrentMode) {
-				this->ModeToDialog(this->savedMode);
-				this->Trace("Restored saved mode");
-			}
+			// this runs on the event log thread, the dialog thread does the restore
+			::PostMessage(this->hwndDialog, WM__S0EXIT, 0, 0);
 		}
 	}
 }
@@ -765,6 +763,12 @@ ULONG FANCONTROL::DlgProc(HWND hwnd, ULONG msg, WPARAM mp1, LPARAM mp2) {
 
 	case WM__NEWDATA:
 		return OnNewData(mp1);
+
+	case WM__S0EXIT:
+		this->isModernS0State = false;
+		this->Trace("Detected Modern S0 Exit");
+		this->ScheduleRestore();
+		break;
 
 	case WM__TASKBAR:
 		return OnTaskbarNotify(mp2);
@@ -1199,12 +1203,41 @@ ULONG FANCONTROL::OnCommand(WPARAM mp1) {
 }
 
 //-------------------------------------------------------------------------
+//  go back to the saved mode once the EC reads sane again
+//-------------------------------------------------------------------------
+void FANCONTROL::ScheduleRestore() {
+	if (g_clientMode || this->savedMode == -1)
+		return;
+
+	// lid modes 1 and 3 are BIOS and manual, the same numbers as the fan modes
+	if (this->LidHoldsMode()) {
+		this->ModeToDialog(this->PowerSuspendMode);
+		return;
+	}
+
+	if (!this->restorePending) {
+		if (this->savedMode == this->CurrentModeFromDialog()) {
+			this->savedMode = -1;
+			return;
+		}
+		this->ModeToDialog(1);
+		this->restorePending = true;
+		this->Trace("Fan stays with the BIOS until the sensors read sane");
+	}
+
+	this->restoreGoodReads = 0;
+	this->restoreNotBefore = ::GetTickCount() + 2500;
+}
+
+//-------------------------------------------------------------------------
 //  WM_POWERBROADCAST handler
 //-------------------------------------------------------------------------
 ULONG FANCONTROL::OnPowerBroadcast(WPARAM mp1, LPARAM mp2) {
 	if (mp1 == PBT_APMSUSPEND) {
 		this->isPowerSuspendState = true;
-		this->savedMode = this->CurrentMode;
+		this->restorePending = false;
+		if (this->savedMode == -1)
+			this->savedMode = this->CurrentMode;
 		this->Trace("System suspend detected");
 
 		if (this->PowerSuspendMode == 4) {
@@ -1215,15 +1248,7 @@ ULONG FANCONTROL::OnPowerBroadcast(WPARAM mp1, LPARAM mp2) {
 	else if (mp1 == PBT_APMRESUMEAUTOMATIC) {
 		this->isPowerSuspendState = false;
 		this->Trace("System resume detected");
-
-		if (this->PowerSuspendMode == 4) {
-			if (this->savedMode != -1 && this->savedMode != this->CurrentMode) {
-				::Sleep(5000);
-				this->ModeToDialog(this->savedMode);
-				::Sleep(1000);
-				this->Trace("Restored saved mode");
-			}
-		}
+		this->ScheduleRestore();
 	}
 	else if (mp1 == PBT_POWERSETTINGCHANGE) {
 		POWERBROADCAST_SETTING* pbs = (POWERBROADCAST_SETTING*)mp2;
@@ -1233,7 +1258,8 @@ ULONG FANCONTROL::OnPowerBroadcast(WPARAM mp1, LPARAM mp2) {
 			if (state == 0) {  // Lid closed
 				this->isLidClosed = true;
 				this->Trace("Lid close detected");
-				this->savedMode = this->CurrentMode;
+				if (this->LidHoldsMode() && this->savedMode == -1)
+					this->savedMode = this->CurrentMode;
 
 				if (this->PowerSuspendMode == 1) {
 					this->ModeToDialog(1);
@@ -1262,14 +1288,8 @@ ULONG FANCONTROL::OnPowerBroadcast(WPARAM mp1, LPARAM mp2) {
 				this->isLidClosed = false;
 				this->Trace("Lid open detected");
 
-				if (this->PowerSuspendMode != 4) {
-					if (this->savedMode != -1 && this->savedMode != this->CurrentMode) {
-						::Sleep(5000);
-						this->ModeToDialog(this->savedMode);
-						::Sleep(1000);
-						this->Trace("Restored saved mode");
-					}
-				}
+				if (this->PowerSuspendMode != 4)
+					this->ScheduleRestore();
 
 				if (!g_clientMode && this->savedSmartLevel != -1) {
 					this->SwitchSmartLevel(this->savedSmartLevel);
@@ -1312,6 +1332,21 @@ ULONG FANCONTROL::OnNewData(WPARAM mp1) {
 	if (ok) {
 		this->ReadErrorCount = 0;
 		this->HandleData();
+
+		if (this->restorePending) {
+			if (this->MaxTemp > 0 && this->MaxTemp <= 110)
+				this->restoreGoodReads++;
+			else
+				this->restoreGoodReads = 0;
+
+			if (this->restoreGoodReads >= 2 && !this->LidHoldsMode()
+				&& (LONG)(::GetTickCount() - this->restoreNotBefore) >= 0) {
+				this->ModeToDialog(this->savedMode);
+				this->savedMode = -1;
+				this->restorePending = false;
+				this->Trace("Restored saved mode");
+			}
+		}
 
 		if (m_needClose) {
 			this->Trace("Program needs to be closed, changing to BIOS mode");
