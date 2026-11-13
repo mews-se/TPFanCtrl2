@@ -349,7 +349,7 @@ MENU::MENU(HMENU hmenu)
 }
 
 MENU::MENU(int id, HINSTANCE hdll)
-	: hMenu(::LoadMenu(((ULONG)hdll == (ULONG)-1) ? hInstRes : hdll, MAKEINTRESOURCE(id))),
+	: hMenu(::LoadMenu((hdll == (HINSTANCE)(INT_PTR)-1) ? hInstRes : hdll, MAKEINTRESOURCE(id))),
 	hWndOwner(NULL),
 	IsLoaded(TRUE) {
 
@@ -486,7 +486,7 @@ MENU::Popup(HWND hwndowner, POINT* ppoint, BOOL synchtrack) {
 		::GetCursorPos(&point);
 
 	hmenu = CreateMenu();
-	::AppendMenu(hmenu, MF_POPUP | MF_STRING, (UINT)
+	::AppendMenu(hmenu, MF_POPUP | MF_STRING, (UINT_PTR)
 		this->hMenu, "BLUB");
 	hmenuShow = ::GetSubMenu(hmenu, 0);
 	RECT r = { 0, 0, 10, 10 };

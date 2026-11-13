@@ -811,7 +811,7 @@ LRESULT CSystemTray::OnSettingChange(UINT uFlags, LPCTSTR lpszSection)
 
 #endif
 
-LRESULT CSystemTray::OnTrayNotification(UINT wParam, LONG lParam) 
+LRESULT CSystemTray::OnTrayNotification(WPARAM wParam, LPARAM lParam) 
 {
 	//Return quickly if its not for this tray icon
 	if (wParam != m_tnd.uID)

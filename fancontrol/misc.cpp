@@ -938,10 +938,9 @@ FANCONTROL::Tracecsvod(const char* text) {
 //  create a thread
 //-------------------------------------------------------------------------
 HANDLE
-FANCONTROL::CreateThread(int(_stdcall* fnct)(ULONG), ULONG p) {
-	LPTHREAD_START_ROUTINE thread = (LPTHREAD_START_ROUTINE)fnct;
+FANCONTROL::CreateThread(LPTHREAD_START_ROUTINE fnct, LPVOID p) {
 	DWORD tid;
 	HANDLE hThread;
-	hThread = ::CreateThread(NULL, 8 * 4096, thread, (void*)p, 0, &tid);
+	hThread = ::CreateThread(NULL, 8 * 4096, fnct, p, 0, &tid);
 	return hThread;
 }

@@ -760,7 +760,7 @@ ULONG FANCONTROL::DlgProc(HWND hwnd, ULONG msg, WPARAM mp1, LPARAM mp2) {
 		if (g_clientMode)
 			this->SendCommand(-1);
 		else if (!this->hThread && !this->FinalSeen)
-			this->hThread = this->CreateThread(FANCONTROL_Thread, (ULONG)this);
+			this->hThread = this->CreateThread(FANCONTROL_Thread, this);
 		break;
 
 	case WM__NEWDATA:

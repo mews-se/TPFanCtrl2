@@ -212,9 +212,8 @@ protected:
 	CTaskbarTextIcon** ppTbTextIcon;
 	MUTEXSEM* pTextIconMutex;
 
-	static int _stdcall
-		FANCONTROL_Thread(ULONG
-			parm) \
+	static DWORD WINAPI
+		FANCONTROL_Thread(LPVOID parm)
 	{ return ((FANCONTROL*)parm)->WorkThread(); }
 
 	int WorkThread();
@@ -293,10 +292,7 @@ protected:
 
 	void CurrentTimeLocalized(char* result, size_t sizeof_result);
 
-	HANDLE CreateThread(int(_stdcall
-		* fnct)(ULONG),
-		ULONG p
-	);
+	HANDLE CreateThread(LPTHREAD_START_ROUTINE fnct, LPVOID p);
 
 	// portio.cpp
 
