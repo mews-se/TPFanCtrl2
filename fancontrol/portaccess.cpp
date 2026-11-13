@@ -260,6 +260,11 @@ TVicClose(void) {
 
 static bool
 TVicOpen(void) {
+#ifdef _WIN64
+	// TVicPort.dll only exists as a 32-bit dll
+	InitMessage("TVicPort needs the x86 build");
+	return false;
+#else
 	g_tvicDll = ::LoadLibrary("TVicPort.dll");
 	if (!g_tvicDll)
 		return false;
@@ -277,6 +282,7 @@ TVicOpen(void) {
 
 	InitMessage("Port backend: TVicPort");
 	return true;
+#endif
 }
 
 //-------------------------------------------------------------------------

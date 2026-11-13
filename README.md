@@ -43,7 +43,7 @@ One executable, two roles:
   mode and `Level2=` lines in the ini.
 - The EC is reached through [PawnIO](https://pawnio.eu), so fan control
   works with memory integrity (HVCI) enabled. TVicPort remains as a
-  fallback, loaded dynamically only when needed.
+  fallback in the x86 build, loaded dynamically only when needed.
 - **Start with Windows** manages a Startup folder shortcut instead of a
   run key entry, which Windows 11 was seen silently skipping at logon.
 
@@ -64,13 +64,15 @@ The EC is reached through one of two port drivers, tried in this order
   with the original TPFanControl installer from the SourceForge days;
   uninstalling that program removes them again, so keep your own
   copies. Only works with memory integrity off, and it is the only
-  backend that reaches the `UseTWR` sensor interface.
+  backend that reaches the `UseTWR` sensor interface. `TVicPort.dll`
+  is 32-bit, so it needs the x86 build.
 
 ## Install
 
 1. Put `TPFanControl.exe`, `TPFanControl.ini` and `LpcACPIEC.bin` (or
    `TVicPort.dll`) in a folder of their own, e.g.
-   `C:\Program Files\TPFanCtrl2`.
+   `C:\Program Files\TPFanCtrl2`. Take the x64 build unless you run
+   32-bit Windows or need TVicPort.
 2. Run the exe as administrator once and enable **Start with Windows** in
    the tray menu. That installs and starts the service and puts a
    shortcut in your Startup folder that brings up the tray window at
@@ -96,8 +98,12 @@ Visual Studio Build Tools with the C++ workload, toolset v145. From a
 developer prompt:
 
 ```
+msbuild fancontrol\fancontrol.sln /p:Configuration=Release /p:Platform=x64
 msbuild fancontrol\fancontrol.sln /p:Configuration=Release /p:Platform=Win32
 ```
+
+The x64 build ends up in `fancontrol\x64\Release`, the x86 build in
+`fancontrol\Release`.
 
 The icon helper projects under `TPFCIcon` and `TPFCIcon_noballons` still
 name the v143 toolset; add `/p:PlatformToolset=v145` when building them
