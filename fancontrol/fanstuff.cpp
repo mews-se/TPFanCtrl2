@@ -411,6 +411,13 @@ void FANCONTROL::SmartControl(void) {
 	char obuf[256] = "";
 	int i, newfanctrl = -1, levelIndex = -1, fanctrl = this->State.FanCtrl;
 
+	// no sane reading, e.g. an EC that returns zeros right after resume
+	if (this->MaxTemp <= 0 || this->MaxTemp > 110) {
+		if (fanctrl != 0x80)
+			this->SetFan("No valid temperature", 0x80);
+		return;
+	}
+
 	if (this->PreviousMode == 1) {
 		sprintf_s(obuf + strlen(obuf), sizeof(obuf) - strlen(obuf), "Change Mode from BIOS->");
 		sprintf_s(obuf + strlen(obuf), sizeof(obuf) - strlen(obuf), "Smart, recalculate fan speed");
