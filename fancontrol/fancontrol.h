@@ -116,6 +116,9 @@ protected:
 	int MaxTemp;
 	int iMaxTemp;
 	int fan1speed, lastfan1speed, fan2speed, lastfan2speed;
+	// rpm reference while level 7 spins the fan up for 64
+	DWORD rampTick;
+	int rampSpeed;
 	int FanBeepFreq, FanBeepDura;
 	int MinimizeToSysTray,
 		Lev64Norm,
@@ -234,6 +237,8 @@ protected:
 	bool HandleData();
 
 	void SmartControl();
+
+	bool FanSpunUp();
 
 	bool SetFan(const char* source, int level, bool final = false);
 

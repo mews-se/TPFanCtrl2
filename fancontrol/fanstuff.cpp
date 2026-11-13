@@ -384,7 +384,7 @@ bool FANCONTROL::HandleData(void) {
 		if (speedVal >= 0 && speedVal <= 255) {
 			// same staircase as smart mode: run 7 regulated until the fan is
 			// spun up, then disengage for the last few hundred rpm
-			if (speedVal == 64 && this->State.FanCtrl != 64 && this->fan1speed < 4000)
+			if (speedVal == 64 && this->State.FanCtrl != 64 && !this->FanSpunUp())
 				speedVal = 7;
 
 			if (this->State.FanCtrl != speedVal)
@@ -467,7 +467,7 @@ void FANCONTROL::SmartControl(void) {
 	// in disengaged mode the EC crawls up from its current duty, useless in an
 	// emergency; run 7 regulated until the fan is spun up, then top out on 64
 	// so the crawl only covers the last few hundred rpm
-	if (newfanctrl == 64 && fanctrl != 64 && this->fan1speed < 4000)
+	if (newfanctrl == 64 && fanctrl != 64 && !this->FanSpunUp())
 		newfanctrl = 7;
 
 	if (newfanctrl != -1 && newfanctrl != this->State.FanCtrl) {
@@ -475,6 +475,39 @@ void FANCONTROL::SmartControl(void) {
 	}
 
 	return;
+}
+
+//-------------------------------------------------------------------------
+//  whether level 7 has spun the fan up far enough to hand over to 64
+//-------------------------------------------------------------------------
+bool FANCONTROL::FanSpunUp(void) {
+	if (this->fan1speed >= 4000)
+		return true;
+
+	// some models top out below 4000 on level 7, an X395 at about 3900, so
+	// hand over as well once the rpm stops rising. A reference older than
+	// two cycles may predate a level change and is taken again.
+	DWORD now = ::GetTickCount(), elapsed = now - this->rampTick;
+	if (this->State.FanCtrl != 7 || elapsed > 2000 + 2000 * (DWORD)this->Cycle) {
+		this->rampTick = now;
+		this->rampSpeed = this->fan1speed;
+		return false;
+	}
+
+	// the read right after a fan write comes too soon to show a change
+	if (elapsed < 2000)
+		return false;
+
+	bool flat = (this->fan1speed - this->rampSpeed) * 1000 < 50 * (int)elapsed;
+	this->rampTick = now;
+	this->rampSpeed = this->fan1speed;
+
+	if (flat) {
+		char buf[64];
+		sprintf_s(buf, sizeof(buf), "Level 7 tops out at %d rpm, handing over to 64", this->fan1speed);
+		this->Trace(buf);
+	}
+	return flat;
 }
 
 //-------------------------------------------------------------------------

@@ -755,6 +755,8 @@ FANCONTROL::ReadConfig(const char* configfile)
 	this->lastfan1speed = 0;
 	this->lastfan2speed = 0;
 	this->fan1speed = 0;
+	this->rampTick = 0;
+	this->rampSpeed = 0;
 
 	return ok;
 }
