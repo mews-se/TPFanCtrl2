@@ -71,8 +71,10 @@ The EC is reached through one of two port drivers, tried in this order
 
 1. Put `TPFanControl.exe`, `TPFanControl.ini` and `LpcACPIEC.bin` (or
    `TVicPort.dll`) in a folder of their own, e.g.
-   `C:\Program Files\TPFanCtrl2`. Take the x64 build unless you run
-   32-bit Windows or need TVicPort.
+   `C:\Program Files\TPFanCtrl2`. Releases ship the x64 build as
+   `TPFanControl.exe` and the x86 build as `TPFanControl-x86.exe`; take
+   the x64 one unless you run 32-bit Windows or need TVicPort. The exe
+   works under either name.
 2. Run the exe as administrator once and enable **Start with Windows** in
    the tray menu. That installs and starts the service and puts a
    shortcut in your Startup folder that brings up the tray window at
