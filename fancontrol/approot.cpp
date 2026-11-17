@@ -537,9 +537,10 @@ void WorkerThread(void *dummy) {
 		::MessageBox(HWND_DESKTOP,
 					"No port backend could be opened.\r\n"
 					"\r\n"
-					"Install PawnIO (pawnio.eu) and keep LpcACPIEC.bin next to\r\n"
-					"the program, or provide TVicPort.dll with its driver on\r\n"
-					"systems without memory integrity.",
+					"Install PawnIO (pawnio.eu) and keep LpcACPIEC.bin and\r\n"
+					"LpcThinkpadEC.bin next to the program, or provide\r\n"
+					"TVicPort.dll with its driver on systems without memory\r\n"
+					"integrity.",
 					"Fan Control",
 					MB_ICONERROR | MB_OK | MB_SETFOREGROUND);
 	}

@@ -97,7 +97,7 @@ static void
 InitializeEcPorts(int& ctrlPort, int& dataPort) {
 	if (ctrlPort != 0 && dataPort != 0) return;
 
-	// first layout the backend can reach; PawnIO only covers 0x62/0x66
+	// first layout the backend can reach; PawnIO covers 0x1600 only with LpcThinkpadEC
 	for (const auto& layout : EC_PORT_LAYOUTS) {
 		if (!PortAccess_AllowsPort(static_cast<USHORT>(layout.ctrl))) continue;
 

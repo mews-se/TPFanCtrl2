@@ -23,12 +23,31 @@ constexpr ULONG PAWNIO_IOCTL_EXECUTE_FN = CTL_CODE(PAWNIO_DEVICE_TYPE, 0x841, ME
 constexpr ULONG PAWNIO_IOCTL_VERSION = CTL_CODE(PAWNIO_DEVICE_TYPE, 0x861, METHOD_BUFFERED, FILE_ANY_ACCESS);
 
 constexpr auto PAWNIO_FN_NAME_LENGTH = 32u;
-constexpr auto PAWNIO_MODULE_FILE = "LpcACPIEC.bin";
 constexpr auto PAWNIO_MAX_MODULE_SIZE = 1024u * 1024u;
 
-// what the signed LpcACPIEC module's port allowlist accepts
-constexpr USHORT PAWNIO_EC_DATAPORT = 0x62;
-constexpr USHORT PAWNIO_EC_CTRLPORT = 0x66;
+static bool
+ThinkpadWindowPort(USHORT port) {
+	return port >= 0x1600 && port <= 0x161F;
+}
+
+static bool
+AcpiEcPort(USHORT port) {
+	return port == 0x62 || port == 0x66;
+}
+
+// the signed modules, one handle each, with the ports their allowlists accept
+struct PawnIoModule {
+	const char* file;
+	const char* ports;
+	USHORT statusPort;
+	bool (*covers)(USHORT port);
+	HANDLE handle;
+};
+
+static PawnIoModule g_pawnioModules[] = {
+	{ "LpcThinkpadEC.bin", "0x1600-0x161f", 0x1604, ThinkpadWindowPort, INVALID_HANDLE_VALUE },
+	{ "LpcACPIEC.bin", "0x62/0x66", 0x66, AcpiEcPort, INVALID_HANDLE_VALUE },
+};
 
 // TVicPort.dll exports undecorated stdcall names
 typedef BOOL(__stdcall* TVIC_OPEN)(void);
@@ -37,8 +56,6 @@ typedef UCHAR(__stdcall* TVIC_READPORT)(USHORT);
 typedef void(__stdcall* TVIC_WRITEPORT)(USHORT, UCHAR);
 
 static PORTACCESS_BACKEND g_backend = PORTACCESS_NONE;
-
-static HANDLE g_pawnio = INVALID_HANDLE_VALUE;
 
 static HMODULE g_tvicDll = NULL;
 static TVIC_OPEN g_tvicOpen = NULL;
@@ -117,7 +134,7 @@ ReadBackendPreference(void) {
 // PawnIO backend
 //-------------------------------------------------------------------------
 static bool
-PawnIoExecute(const char* name, const ULONG64* in, DWORD inCount, ULONG64* out, DWORD outCount) {
+PawnIoExecute(HANDLE device, const char* name, const ULONG64* in, DWORD inCount, ULONG64* out, DWORD outCount) {
 	char input[PAWNIO_FN_NAME_LENGTH + 2 * sizeof(ULONG64)] = { 0 };
 
 	if (inCount > 2) return false;
@@ -127,7 +144,7 @@ PawnIoExecute(const char* name, const ULONG64* in, DWORD inCount, ULONG64* out, 
 		memcpy(input + PAWNIO_FN_NAME_LENGTH, in, inCount * sizeof(ULONG64));
 
 	DWORD written = 0;
-	if (!::DeviceIoControl(g_pawnio, PAWNIO_IOCTL_EXECUTE_FN,
+	if (!::DeviceIoControl(device, PAWNIO_IOCTL_EXECUTE_FN,
 			input, PAWNIO_FN_NAME_LENGTH + inCount * sizeof(ULONG64),
 			out, outCount * sizeof(ULONG64), &written, NULL))
 		return false;
@@ -137,10 +154,22 @@ PawnIoExecute(const char* name, const ULONG64* in, DWORD inCount, ULONG64* out, 
 
 static void
 PawnIoClose(void) {
-	if (g_pawnio != INVALID_HANDLE_VALUE) {
-		::CloseHandle(g_pawnio);
-		g_pawnio = INVALID_HANDLE_VALUE;
+	for (auto& mod : g_pawnioModules) {
+		if (mod.handle != INVALID_HANDLE_VALUE) {
+			::CloseHandle(mod.handle);
+			mod.handle = INVALID_HANDLE_VALUE;
+		}
 	}
+}
+
+static HANDLE
+PawnIoHandleFor(USHORT port) {
+	for (const auto& mod : g_pawnioModules) {
+		if (mod.handle != INVALID_HANDLE_VALUE && mod.covers(port))
+			return mod.handle;
+	}
+
+	return INVALID_HANDLE_VALUE;
 }
 
 static HANDLE
@@ -175,29 +204,15 @@ StartPawnIoDriver(void) {
 	::CloseServiceHandle(mgr);
 }
 
-static bool
-PawnIoOpen(void) {
-	g_pawnio = OpenPawnIoDevice();
-
-	if (g_pawnio == INVALID_HANDLE_VALUE) {
-		StartPawnIoDriver();
-		g_pawnio = OpenPawnIoDevice();
-	}
-
-	if (g_pawnio == INVALID_HANDLE_VALUE)
-		return false;
-
-	ULONG version = 0;
-	DWORD written = 0;
-	::DeviceIoControl(g_pawnio, PAWNIO_IOCTL_VERSION,
-		NULL, 0, &version, sizeof(version), &written, NULL);
-
+static HANDLE
+PawnIoLoadModule(const PawnIoModule& mod) {
 	FILE* f = NULL;
-	if (fopen_s(&f, PAWNIO_MODULE_FILE, "rb") != 0 || !f) {
-		InitMessage("PawnIO driver found but %s is missing next to the program", PAWNIO_MODULE_FILE);
-		PawnIoClose();
-		return false;
+	if (fopen_s(&f, mod.file, "rb") != 0 || !f) {
+		InitMessage("PawnIO driver found but %s is missing next to the program", mod.file);
+		return INVALID_HANDLE_VALUE;
 	}
+
+	HANDLE device = OpenPawnIoDevice();
 
 	fseek(f, 0, SEEK_END);
 	const long size = ftell(f);
@@ -206,11 +221,11 @@ PawnIoOpen(void) {
 	UCHAR* blob = NULL;
 	bool loaded = false;
 
-	if (size > 0 && size <= (long)PAWNIO_MAX_MODULE_SIZE) {
+	if (device != INVALID_HANDLE_VALUE && size > 0 && size <= (long)PAWNIO_MAX_MODULE_SIZE) {
 		blob = (UCHAR*)malloc(size);
 		if (blob && fread(blob, 1, size, f) == (size_t)size) {
 			DWORD ignored = 0;
-			loaded = ::DeviceIoControl(g_pawnio, PAWNIO_IOCTL_LOAD_BINARY,
+			loaded = ::DeviceIoControl(device, PAWNIO_IOCTL_LOAD_BINARY,
 				blob, size, NULL, 0, &ignored, NULL) != 0;
 		}
 	}
@@ -219,23 +234,58 @@ PawnIoOpen(void) {
 	fclose(f);
 
 	if (!loaded) {
-		InitMessage("PawnIO refused %s (unsigned or damaged module?)", PAWNIO_MODULE_FILE);
-		PawnIoClose();
-		return false;
+		InitMessage("PawnIO refused %s (wrong machine, unsigned or damaged module?)", mod.file);
+		if (device != INVALID_HANDLE_VALUE) ::CloseHandle(device);
+		return INVALID_HANDLE_VALUE;
 	}
 
 	// a status read proves the module actually reaches the EC ports
-	ULONG64 in = PAWNIO_EC_CTRLPORT;
+	ULONG64 in = mod.statusPort;
 	ULONG64 out = 0;
-	if (!PawnIoExecute("ioctl_pio_read", &in, 1, &out, 1)) {
-		InitMessage("PawnIO module loaded but a test read of port 0x66 failed");
-		PawnIoClose();
-		return false;
+	if (!PawnIoExecute(device, "ioctl_pio_read", &in, 1, &out, 1)) {
+		InitMessage("PawnIO loaded %s but a test read of port 0x%X failed", mod.file, mod.statusPort);
+		::CloseHandle(device);
+		return INVALID_HANDLE_VALUE;
 	}
 
-	InitMessage("Port backend: PawnIO %lu.%lu.%lu with %s (EC at 0x62/0x66)",
-		(version >> 16) & 0xFFFF, (version >> 8) & 0xFF, version & 0xFF,
-		PAWNIO_MODULE_FILE);
+	return device;
+}
+
+static bool
+PawnIoOpen(void) {
+	HANDLE probe = OpenPawnIoDevice();
+
+	if (probe == INVALID_HANDLE_VALUE) {
+		StartPawnIoDriver();
+		probe = OpenPawnIoDevice();
+	}
+
+	if (probe == INVALID_HANDLE_VALUE)
+		return false;
+
+	ULONG version = 0;
+	DWORD written = 0;
+	::DeviceIoControl(probe, PAWNIO_IOCTL_VERSION,
+		NULL, 0, &version, sizeof(version), &written, NULL);
+	::CloseHandle(probe);
+
+	// a module the machine refuses is skipped, the other may still serve
+	char loaded[INIT_MESSAGE_SIZE] = "";
+
+	for (auto& mod : g_pawnioModules) {
+		mod.handle = PawnIoLoadModule(mod);
+		if (mod.handle == INVALID_HANDLE_VALUE) continue;
+
+		char entry[64];
+		sprintf_s(entry, sizeof(entry), "%s%s (EC at %s)", loaded[0] ? " and " : "", mod.file, mod.ports);
+		strcat_s(loaded, sizeof(loaded), entry);
+	}
+
+	if (!loaded[0])
+		return false;
+
+	InitMessage("Port backend: PawnIO %lu.%lu.%lu with %s",
+		(version >> 16) & 0xFFFF, (version >> 8) & 0xFF, version & 0xFF, loaded);
 
 	return true;
 }
@@ -351,7 +401,7 @@ bool
 PortAccess_AllowsPort(USHORT port) {
 	switch (g_backend) {
 	case PORTACCESS_PAWNIO:
-		return port == PAWNIO_EC_DATAPORT || port == PAWNIO_EC_CTRLPORT;
+		return PawnIoHandleFor(port) != INVALID_HANDLE_VALUE;
 	case PORTACCESS_TVICPORT:
 		return true;
 	default:
@@ -363,9 +413,10 @@ UCHAR
 PortAccess_ReadByte(USHORT port) {
 	switch (g_backend) {
 	case PORTACCESS_PAWNIO: {
+		const HANDLE device = PawnIoHandleFor(port);
 		ULONG64 in = port;
 		ULONG64 out = 0;
-		if (PawnIoExecute("ioctl_pio_read", &in, 1, &out, 1))
+		if (device != INVALID_HANDLE_VALUE && PawnIoExecute(device, "ioctl_pio_read", &in, 1, &out, 1))
 			return (UCHAR)out;
 		break;
 	}
@@ -383,8 +434,10 @@ void
 PortAccess_WriteByte(USHORT port, UCHAR value) {
 	switch (g_backend) {
 	case PORTACCESS_PAWNIO: {
+		const HANDLE device = PawnIoHandleFor(port);
 		ULONG64 in[2] = { port, value };
-		PawnIoExecute("ioctl_pio_write", in, 2, NULL, 0);
+		if (device != INVALID_HANDLE_VALUE)
+			PawnIoExecute(device, "ioctl_pio_write", in, 2, NULL, 0);
 		break;
 	}
 	case PORTACCESS_TVICPORT:

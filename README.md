@@ -53,24 +53,26 @@ The EC is reached through one of two port drivers, tried in this order
 (override with `PortBackend=` in the ini):
 
 - **PawnIO**: install it from [pawnio.eu](https://pawnio.eu) or
-  `winget install namazso.PawnIO`, and keep `LpcACPIEC.bin` (bundled
-  here under `fancontrol/pawnio/`, a separate file on each release) next
-  to the exe. The driver is WHQL-signed and works with memory integrity
-  (HVCI) enabled; this is the right choice on any current Windows 11
-  machine, where TVicPort's driver is refused. The signed module reaches
-  the EC through the classic ports 0x62/0x66.
+  `winget install namazso.PawnIO`, and keep `LpcACPIEC.bin` and
+  `LpcThinkpadEC.bin` (bundled here under `fancontrol/pawnio/`, separate
+  files on each release) next to the exe. The driver is WHQL-signed and
+  works with memory integrity (HVCI) enabled; this is the right choice
+  on any current Windows 11 machine, where TVicPort's driver is refused.
+  `LpcThinkpadEC.bin` reaches the EC through the ThinkPad window at
+  0x1600, `UseTWR` included, and only loads on ThinkPads;
+  `LpcACPIEC.bin` covers the classic ports 0x62/0x66. The program uses
+  whichever of the two load and tries 0x1600 first.
 - **TVicPort**: put `TVicPort.dll` next to the exe with its kernel
   driver (`TVicPort64.sys` in `System32\drivers`) in place. Both ship
   with the original TPFanControl installer from the SourceForge days;
   uninstalling that program removes them again, so keep your own
-  copies. Only works with memory integrity off, and it is the only
-  backend that reaches the `UseTWR` sensor interface. `TVicPort.dll`
-  is 32-bit, so it needs the x86 build.
+  copies. Only works with memory integrity off. `TVicPort.dll` is
+  32-bit, so it needs the x86 build.
 
 ## Install
 
-1. Put `TPFanControl.exe`, `TPFanControl.ini` and `LpcACPIEC.bin` (or
-   `TVicPort.dll`) in a folder of their own, e.g.
+1. Put `TPFanControl.exe`, `TPFanControl.ini`, `LpcACPIEC.bin` and
+   `LpcThinkpadEC.bin` (or `TVicPort.dll`) in a folder of their own, e.g.
    `C:\Program Files\TPFanCtrl2`. Releases ship the x64 build as
    `TPFanControl.exe` and the x86 build as `TPFanControl-x86.exe`; take
    the x64 one unless you run 32-bit Windows or need TVicPort. The exe
@@ -119,7 +121,8 @@ its daily driver. For models confirmed on earlier versions, see the
 
 ## License
 
-Public domain (Unlicense), inherited from upstream. `LpcACPIEC.bin` is
-PawnIO's module and stays LGPL-2.1, see `fancontrol/pawnio/COPYING`.
+Public domain (Unlicense), inherited from upstream. `LpcACPIEC.bin` and
+`LpcThinkpadEC.bin` are PawnIO modules and stay LGPL-2.1, see
+`fancontrol/pawnio/COPYING`.
 No warranty: this program writes to your embedded controller, use it at
 your own risk.

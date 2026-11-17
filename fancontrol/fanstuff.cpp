@@ -850,9 +850,8 @@ bool FANCONTROL::ReadEcRaw(FCSTATE* pfcstate) {
 		}
 	}
 	else {
-		// the TWR mailbox lives outside the ports the PawnIO module exposes
 		if (!PortAccess_AllowsPort(0x1610)) {
-			this->Trace("UseTWR needs a port backend that reaches 0x1600-0x161f, use TVicPort or disable UseTWR");
+			this->Trace("UseTWR needs 0x1600-0x161f: keep LpcThinkpadEC.bin next to the program, use TVicPort or disable UseTWR");
 			return false;
 		}
 

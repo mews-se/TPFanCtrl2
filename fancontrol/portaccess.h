@@ -13,12 +13,14 @@
 
 // Backend-agnostic byte-wide port io towards the embedded controller.
 //
-// PawnIO (https://pawnio.eu) runs port io inside a signed sandboxed module,
-// so it loads with memory integrity (HVCI) enabled, but the signed LpcACPIEC
-// module only reaches the classic ACPI EC ports 0x62/0x66.  TVicPort reaches
-// any port but its driver is refused by HVCI, so it remains as the fallback
-// for systems without memory integrity.  Both are loaded dynamically; neither
-// dll is required for the program itself to start.
+// PawnIO (https://pawnio.eu) runs port io inside signed sandboxed modules,
+// so it loads with memory integrity (HVCI) enabled.  The signed LpcACPIEC
+// module reaches the classic ACPI EC ports 0x62/0x66, LpcThinkpadEC the
+// ThinkPad EC window at 0x1600-0x161f, and each port goes to the module that
+// covers it.  TVicPort reaches any port but its driver is refused by HVCI,
+// so it remains as the fallback for systems without memory integrity.  Both
+// are loaded dynamically; neither dll is required for the program itself to
+// start.
 
 enum PORTACCESS_BACKEND {
 	PORTACCESS_NONE = 0,
