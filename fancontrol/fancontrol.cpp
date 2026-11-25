@@ -1358,6 +1358,8 @@ ULONG FANCONTROL::OnNewData(WPARAM mp1) {
 	}
 	else {
 		char buf[1024];
+		if (!g_clientMode)
+			SharedState_MarkTachStale();
 		sprintf_s(buf, sizeof(buf), "Warning: can't read Status, read error count = %d", this->ReadErrorCount);
 		this->Trace(buf);
 		sprintf_s(buf, sizeof(buf), "We will close to BIOS-Mode after %d consecutive read errors", this->MaxReadErrors);

@@ -309,6 +309,8 @@ bool FANCONTROL::HandleData(void) {
 		shared->fan1hi = (unsigned char)this->State.Fan1SpeedHi;
 		shared->fan2lo = (unsigned char)this->State.Fan2SpeedLo;
 		shared->fan2hi = (unsigned char)this->State.Fan2SpeedHi;
+		SharedState_PublishTach(this->State.Fan1SpeedLo, this->State.Fan1SpeedHi,
+			this->State.Fan2SpeedLo, this->State.Fan2SpeedHi, this->StrictEcReadObf);
 		for (i = 0; i < 12; i++)
 			shared->sensors[i] = (unsigned char)this->State.Sensors[i];
 		::InterlockedIncrement(&shared->stateSeq);

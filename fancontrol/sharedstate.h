@@ -18,6 +18,20 @@
 
 #pragma once
 
+// Each packed diagnostic word contains the raw 16-bit sample and its
+// status in bits 16..23. A valid range is not a physical RPM guarantee.
+enum TachSampleStatus {
+	TACH_UNKNOWN = 0,
+	TACH_STALE = 1,
+	TACH_INVALID = 2,
+	TACH_FRESH_UNVERIFIED = 3,
+	TACH_FRESH_OBF = 4,
+};
+
+inline LONG PackTachSample(unsigned int rpm, TachSampleStatus status) {
+	return static_cast<LONG>((static_cast<unsigned int>(status) << 16) | (rpm & 0xffff));
+}
+
 struct FCSHARED {
 	volatile LONG stateSeq;   // bumped by the engine after every publish
 	volatile LONG cmdSeq;     // bumped by a client after every command
@@ -36,6 +50,11 @@ struct FCSHARED {
 
 	volatile LONG traceSeq;   // bumped by the engine for every line below
 	char traceLines[48][160]; // ring of engine log lines, mirrored by clients
+
+	// Optional version-1 suffix. Preserve all existing offsets.
+	LONG tachVersion;
+	volatile LONG tachSample1;
+	volatile LONG tachSample2;
 };
 
 bool SharedState_Create();   // engine side, fails if it cannot be created
@@ -46,5 +65,10 @@ void SharedState_Close();
 bool SharedState_EngineRunning();
 
 FCSHARED* SharedState();     // NULL until created or attached
+
+// Engine-only diagnostics; do not modify cached RPM or control policy.
+void SharedState_PublishTach(unsigned char lo1, unsigned char hi1,
+	unsigned char lo2, unsigned char hi2, bool strictObf);
+void SharedState_MarkTachStale();
 
 #endif // SHAREDSTATE_H
