@@ -58,6 +58,7 @@ protected:
 	struct FCSTATE {
 
 		char FanCtrl,
+			Fan2Ctrl,
 			Fan1SpeedLo,
 			Fan1SpeedHi,
 			Fan2SpeedLo,
@@ -104,6 +105,8 @@ protected:
 	int FanSpeedLowByte;
 	int ActiveMode;
 	int SingleFan;
+	bool StrictEcReadObf = false;
+	bool FanCommandPending = false;
 	int PowerSuspendMode;
 	int LidSmartLevel;  // 1 or 2 runs that smart profile while the lid is closed, 0 off
 	int ModernS0Mode;
@@ -233,6 +236,7 @@ protected:
 	bool ReadEcStatus(FCSTATE* pfcstate);
 
 	bool ReadEcRaw(FCSTATE* pfcstate);
+	bool SelectFan(char fan);
 
 	bool HandleData();
 

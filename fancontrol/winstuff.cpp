@@ -71,13 +71,12 @@ MUTEXSEM::~MUTEXSEM() {
 }
 
 int
-MUTEXSEM::Lock(int millies) {
-	int ok = FALSE;
-
-	int rc = this->hmux ? ::WaitForSingleObject(this->hmux, millies) : WAIT_FAILED;
-	ok = rc == WAIT_OBJECT_0;  // returns posted TRUE/FALSE
-
-	return ok;
+MUTEXSEM::Lock(int millies, bool* abandoned) {
+	const DWORD rc = this->hmux ? ::WaitForSingleObject(this->hmux, millies) : WAIT_FAILED;
+	if (abandoned)
+		*abandoned = rc == WAIT_ABANDONED;
+	// Both results grant ownership, and each requires one release.
+	return rc == WAIT_OBJECT_0 || rc == WAIT_ABANDONED;
 }
 
 void

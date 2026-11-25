@@ -1358,6 +1358,8 @@ ULONG FANCONTROL::OnNewData(WPARAM mp1) {
 	}
 	else {
 		char buf[1024];
+		if (!g_clientMode)
+			SharedState_MarkTachStale();
 		sprintf_s(buf, sizeof(buf), "Warning: can't read Status, read error count = %d", this->ReadErrorCount);
 		this->Trace(buf);
 		sprintf_s(buf, sizeof(buf), "We will close to BIOS-Mode after %d consecutive read errors", this->MaxReadErrors);
@@ -1508,12 +1510,16 @@ bool FANCONTROL::TryClose() {
 		::WaitForSingleObject(this->hThread, INFINITE);
 	}
 
-	if (!this->EcAccess.Lock(100)) {
+	bool abandoned = false;
+	if (!this->EcAccess.Lock(100, &abandoned)) {
 		// Something is going on, let's do this later
 		this->Trace("Delaying close");
 		m_needClose = true;
 		return false;
 	}
+
+	if (abandoned)
+		this->Trace("Acquired abandoned EC mutex during close");
 
 	// don't close if we can't set the fan back to bios controlled
 	// a client has no fan to hand back, and SetFan refuses for it anyway

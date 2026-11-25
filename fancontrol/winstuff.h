@@ -64,7 +64,7 @@ public:
 
 	~MUTEXSEM();
 
-	int Lock(int millies = 0xFFFFFFFF);
+	int Lock(int millies = 0xFFFFFFFF, bool* abandoned = nullptr);
 
 	void Unlock();
 

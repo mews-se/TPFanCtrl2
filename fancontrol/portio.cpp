@@ -70,11 +70,9 @@ constexpr auto ACPI_EC_COMMAND_QUERY = static_cast<UCHAR>(0x84);
 
 constexpr int DEFAULT_SLEEP_TICKS = 10;
 constexpr int DEFAULT_TIMEOUT_MS = 1000;
-constexpr int RECOVERY_DRAIN_READS = 8;
 
 constexpr int TRACE_BUFFER_SIZE = 160;
 
-constexpr bool STRICT_EC_READ_OBF_HANDLING = false;
 
 //-------------------------------------------------------------------------
 // Context for a single EC operation
@@ -173,7 +171,8 @@ WaitForAllClear(USHORT port, UCHAR flags, int timeout = DEFAULT_TIMEOUT_MS) {
 	const DWORD start = ::GetTickCount();
 
 	for (;;) {
-		const UCHAR data = PortAccess_ReadByte(port);
+		UCHAR data;
+		if (!PortAccess_TryReadByte(port, data)) return false;
 		if ((data & flags) == 0) return true;
 		if ((::GetTickCount() - start) >= static_cast<DWORD>(timeout)) return false;
 		::Sleep(DEFAULT_SLEEP_TICKS);
@@ -188,7 +187,8 @@ WaitForAnySet(USHORT port, UCHAR flags, int timeout = DEFAULT_TIMEOUT_MS) {
 	const DWORD start = ::GetTickCount();
 
 	for (;;) {
-		const UCHAR data = PortAccess_ReadByte(port);
+		UCHAR data;
+		if (!PortAccess_TryReadByte(port, data)) return false;
 		if ((data & flags) != 0) return true;
 		if ((::GetTickCount() - start) >= static_cast<DWORD>(timeout)) return false;
 		::Sleep(DEFAULT_SLEEP_TICKS);
@@ -196,65 +196,38 @@ WaitForAnySet(USHORT port, UCHAR flags, int timeout = DEFAULT_TIMEOUT_MS) {
 }
 
 //--------------------------------------------------------------------------
-// best-effort drain of a stale output buffer so a new transaction can start
-//--------------------------------------------------------------------------
-static void
-DrainOutputBuffer(USHORT ctrlPort, USHORT dataPort) {
-	for (int i = 0; i < RECOVERY_DRAIN_READS; i++) {
-		const UCHAR status = PortAccess_ReadByte(ctrlPort);
-
-		if ((status & ACPI_EC_FLAG_OBF) == 0) break;
-
-		(void)PortAccess_ReadByte(dataPort);
-
-		::Sleep(DEFAULT_SLEEP_TICKS);
-	}
-}
-
-//--------------------------------------------------------------------------
-// wait for controller ready state; drains stale output if necessary
+// wait for controller ready state; drain only when a status read confirms OBF
 //--------------------------------------------------------------------------
 static bool
 WaitForControllerReady(USHORT ctrlPort, USHORT dataPort, int timeout = DEFAULT_TIMEOUT_MS) {
 	const DWORD start = ::GetTickCount();
 
 	for (;;) {
-		const UCHAR status = PortAccess_ReadByte(ctrlPort);
+		UCHAR status;
+		if (!PortAccess_TryReadByte(ctrlPort, status)) return false;
 
 		if ((status & ACPI_EC_FLAG_OBF) != 0) {
-			(void)PortAccess_ReadByte(dataPort);
+			UCHAR discarded;
+			if (!PortAccess_TryReadByte(dataPort, discarded)) return false;
 		}
 		else if ((status & ACPI_EC_FLAG_IBF) == 0) {
 			return true;
 		}
 
 		if ((::GetTickCount() - start) >= static_cast<DWORD>(timeout)) return false;
-
 		::Sleep(DEFAULT_SLEEP_TICKS);
 	}
 }
 
 //-------------------------------------------------------------------------
-// Trace an EC timeout: optionally drain, read status, format and emit trace
+// Trace an EC operation failure without further port I/O
 //-------------------------------------------------------------------------
 static void
-TraceEcTimeout(const EcOpContext& ctx, int step, bool drain) {
-	if (drain) DrainOutputBuffer(ctx.ctrlPort, ctx.dataPort);
-
-	const UCHAR status = PortAccess_ReadByte(ctx.ctrlPort);
-
-	if (ctx.ecData >= 0) {
-		sprintf_s(ctx.traceText, ctx.traceSize,
-			"%s: timed out #%d (ctrl=0x%04X data=0x%04X offset=0x%02X data=0x%02X status=0x%02X)",
-			ctx.opName, step, ctx.ctrlPort, ctx.dataPort, ctx.ecOffset,
-			static_cast<UCHAR>(ctx.ecData), status);
-	}
-	else {
-		sprintf_s(ctx.traceText, ctx.traceSize,
-			"%s: timed out #%d (ctrl=0x%04X data=0x%04X offset=0x%02X status=0x%02X)",
-			ctx.opName, step, ctx.ctrlPort, ctx.dataPort, ctx.ecOffset, status);
-	}
-
+TraceEcFailure(const EcOpContext& ctx, int step) {
+	// Do not touch an uncertain mailbox just to produce a diagnostic.
+	sprintf_s(ctx.traceText, ctx.traceSize,
+		"%s: failed #%d (ctrl=0x%04X data=0x%04X offset=0x%02X)",
+		ctx.opName, step, ctx.ctrlPort, ctx.dataPort, ctx.ecOffset);
 	ctx.pThis->Trace(ctx.traceText);
 }
 
@@ -269,25 +242,31 @@ static bool
 SendEcCommandAndAddress(const EcOpContext& ctx, UCHAR command) {
 	// wait for IBF and OBF to clear; drain stale OBF if present
 	if (!WaitForControllerReady(ctx.ctrlPort, ctx.dataPort)) {
-		TraceEcTimeout(ctx, 1, false);
+		TraceEcFailure(ctx, 1);
 		return false;
 	}
 
 	// send command byte
-	PortAccess_WriteByte(ctx.ctrlPort, command);
+	if (!PortAccess_TryWriteByte(ctx.ctrlPort, command)) {
+		TraceEcFailure(ctx, 2);
+		return false;
+	}
 
 	// wait for IBF to clear (command byte removed from EC's input queue)
 	if (!WaitForAllClear(ctx.ctrlPort, ACPI_EC_FLAG_IBF)) {
-		TraceEcTimeout(ctx, 2, true);
+		TraceEcFailure(ctx, 2);
 		return false;
 	}
 
 	// send address byte
-	PortAccess_WriteByte(ctx.dataPort, ctx.ecOffset);
+	if (!PortAccess_TryWriteByte(ctx.dataPort, ctx.ecOffset)) {
+		TraceEcFailure(ctx, 3);
+		return false;
+	}
 
 	// wait for IBF to clear (address byte removed from EC's input queue)
 	if (!WaitForAllClear(ctx.ctrlPort, ACPI_EC_FLAG_IBF)) {
-		TraceEcTimeout(ctx, 3, true);
+		TraceEcFailure(ctx, 3);
 		return false;
 	}
 
@@ -299,19 +278,24 @@ SendEcCommandAndAddress(const EcOpContext& ctx, UCHAR command) {
 // Returns: true if successful, false if timeout or error
 //-------------------------------------------------------------------------
 static bool
-ExecuteEcRead(const EcOpContext& ctx, char& outData) {
+ExecuteEcRead(const EcOpContext& ctx, char& outData, bool strictObf) {
 	if (!SendEcCommandAndAddress(ctx, ACPI_EC_COMMAND_READ))
 		return false;
 
-	if (STRICT_EC_READ_OBF_HANDLING) {
+	if (strictObf) {
 		// wait for OBF to be SET (data ready to read)
 		if (!WaitForAnySet(ctx.ctrlPort, ACPI_EC_FLAG_OBF)) {
-			TraceEcTimeout(ctx, 4, true);
+			TraceEcFailure(ctx, 4);
 			return false;
 		}
 	}
 
-	outData = static_cast<char>(PortAccess_ReadByte(ctx.dataPort));
+	UCHAR value;
+	if (!PortAccess_TryReadByte(ctx.dataPort, value)) {
+		TraceEcFailure(ctx, 5);
+		return false;
+	}
+	outData = static_cast<char>(value);
 	return true;
 }
 
@@ -325,11 +309,14 @@ ExecuteEcWrite(const EcOpContext& ctx) {
 		return false;
 
 	// perform the write operation
-	PortAccess_WriteByte(ctx.dataPort, static_cast<UCHAR>(ctx.ecData));
+	if (!PortAccess_TryWriteByte(ctx.dataPort, static_cast<UCHAR>(ctx.ecData))) {
+		TraceEcFailure(ctx, 4);
+		return false;
+	}
 
 	// wait for IBF to clear (data byte removed from EC's input queue)
 	if (!WaitForAllClear(ctx.ctrlPort, ACPI_EC_FLAG_IBF)) {
-		TraceEcTimeout(ctx, 4, true);
+		TraceEcFailure(ctx, 4);
 		return false;
 	}
 
@@ -356,7 +343,7 @@ FANCONTROL::ReadByteFromEC(int offset, char* pdata) {
 			ecOffset, -1, "readec", traceText, sizeof(traceText), this
 		};
 
-		if (ExecuteEcRead(ctx, *pdata)) {
+		if (ExecuteEcRead(ctx, *pdata, this->StrictEcReadObf)) {
 			if (i > 0) {
 				sprintf_s(traceText, sizeof(traceText),
 					"readec: SUCCESS after layout switch to %s (ctrl=0x%04X data=0x%04X)",

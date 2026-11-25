@@ -301,6 +301,11 @@ FANCONTROL::ReadConfig(const char* configfile)
 				continue;
 			}
 
+			if (_strnicmp(buf, "StrictEcReadObf=", 16) == 0) {
+				this->StrictEcReadObf = atoi(buf + 16) != 0;
+				continue;
+			}
+
 			if (_strnicmp(buf, "SingleFan=", 10) == 0) {
 				this->SingleFan = atoi(buf + 10);
 				continue;

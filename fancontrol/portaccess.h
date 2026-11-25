@@ -37,6 +37,9 @@ const char* PortAccess_BackendName(void);
 // false when the active backend cannot reach the port at all
 bool PortAccess_AllowsPort(USHORT port);
 
+// Checked transport for EC mailbox transactions; legacy helpers remain for extended sensors.
+bool PortAccess_TryReadByte(USHORT port, UCHAR& value);
+bool PortAccess_TryWriteByte(USHORT port, UCHAR value);
 UCHAR PortAccess_ReadByte(USHORT port);
 void PortAccess_WriteByte(USHORT port, UCHAR value);
 
