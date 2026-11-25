@@ -716,7 +716,12 @@ bool FANCONTROL::LockECAccess() {
 	const int sleepTicks = 100;
 
 	for (int i = 0; i < numTries; i++) {
-		if (this->EcAccess.Lock(100)) return TRUE;
+		bool abandoned = false;
+		if (this->EcAccess.Lock(100, &abandoned)) {
+			if (abandoned)
+				this->Trace("Acquired abandoned EC mutex; next transaction checks controller readiness");
+			return TRUE;
+		}
 
 		if (i + 1 < numTries) ::Sleep(sleepTicks);
 	}

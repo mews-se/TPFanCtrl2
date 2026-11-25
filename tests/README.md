@@ -20,3 +20,10 @@ stateSeq; readers must inspect the diagnostic words even if stateSeq is unchange
 A single-fan system retains the existing duplicated fan2 value. The status is
 diagnostic only; it does not override thermal protection or change the UI.
 No real laptop operation is performed by these tests.
+
+The fourth commit handles WAIT_ABANDONED as acquired, logs recovery for EC
+callers and balances ownership. Run python tests/check_mutex.py for seven
+deterministic ownership scenarios including worker exit, dialog-to-worker
+handoff, timeout, failed wait and recursive close. This is a fake WinAPI test,
+not an actual Windows threading or hardware test. Controller readiness
+is still checked by the existing EC transaction path.

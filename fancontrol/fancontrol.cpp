@@ -1510,12 +1510,16 @@ bool FANCONTROL::TryClose() {
 		::WaitForSingleObject(this->hThread, INFINITE);
 	}
 
-	if (!this->EcAccess.Lock(100)) {
+	bool abandoned = false;
+	if (!this->EcAccess.Lock(100, &abandoned)) {
 		// Something is going on, let's do this later
 		this->Trace("Delaying close");
 		m_needClose = true;
 		return false;
 	}
+
+	if (abandoned)
+		this->Trace("Acquired abandoned EC mutex during close");
 
 	// don't close if we can't set the fan back to bios controlled
 	// a client has no fan to hand back, and SetFan refuses for it anyway
