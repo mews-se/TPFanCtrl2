@@ -105,6 +105,7 @@ protected:
 	int FanSpeedLowByte;
 	int ActiveMode;
 	int SingleFan;
+	bool StrictEcReadObf = false;
 	bool FanCommandPending = false;
 	int PowerSuspendMode;
 	int LidSmartLevel;  // 1 or 2 runs that smart profile while the lid is closed, 0 off
